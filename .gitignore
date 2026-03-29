@@ -1,0 +1,7 @@
+summary.md
+.env
+target/
+*.parquet
+node_modules/
+app/dist/
+.history/
