@@ -7,6 +7,22 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 
+/// EIA sometimes returns numeric values as JSON strings (e.g. "918" instead of 918).
+fn deserialize_opt_f64<'de, D>(d: D) -> Result<Option<f64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::Error;
+    let v: Option<serde_json::Value> = Option::deserialize(d)?;
+    match v {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(serde_json::Value::Number(n))   => Ok(n.as_f64()),
+        Some(serde_json::Value::String(s))   => s.parse::<f64>().map(Some)
+            .map_err(|_| D::Error::custom(format!("invalid numeric string: {s}"))),
+        Some(other) => Err(D::Error::custom(format!("expected number or string, got {other}"))),
+    }
+}
+
 #[derive(Clone)]
 struct AppState {
     eia_key:   String,
@@ -45,6 +61,7 @@ struct EiaFuelData {
 struct FuelTypeRecord {
     respondent: String,
     fueltype:   String,
+    #[serde(deserialize_with = "deserialize_opt_f64")]
     value:      Option<f64>,
     period:     String,
 }
@@ -72,6 +89,7 @@ struct EiaRecord {
     from_ba: String,
     #[serde(rename = "toba")]
     to_ba: String,
+    #[serde(deserialize_with = "deserialize_opt_f64")]
     value: Option<f64>,
     period: String,
 }
@@ -98,28 +116,74 @@ pub struct Link {
     value: f64,
 }
 
-// The ~20 major balancing authorities we care about
-const BALANCING_AUTHORITIES: &[(&str, &str)] = &[
+// All known balancing authorities — used as a label lookup only.
+// The interchange/generation queries no longer filter by this list;
+// instead we return whatever BA pairs the EIA API actually reports.
+const BA_LABELS: &[(&str, &str)] = &[
+    // Western Interconnection
     ("CISO", "California ISO"),
-    ("ERCO", "ERCOT (Texas)"),
-    ("MISO", "MISO"),
-    ("PJM", "PJM"),
-    ("NYIS", "NY ISO"),
-    ("ISNE", "ISO New England"),
-    ("SWPP", "Southwest Power Pool"),
-    ("PACE", "PacifiCorp East"),
+    ("BPAT", "Bonneville Power Admin"),
     ("PACW", "PacifiCorp West"),
-    ("BPAT", "Bonneville Power"),
+    ("PACE", "PacifiCorp East"),
     ("IPCO", "Idaho Power"),
     ("NEVP", "NV Energy"),
-    ("AZPS", "APS (Arizona)"),
-    ("SRP", "Salt River Project"),
+    ("AZPS", "Arizona Public Service"),
+    ("SRP",  "Salt River Project"),
     ("WACM", "WAPA Colorado"),
     ("PSCO", "Xcel Energy Colorado"),
-    ("TVA", "Tennessee Valley Auth"),
-    ("DUK", "Duke Energy"),
-    ("FPL", "Florida Power & Light"),
-    ("SC", "South Carolina E&G"),
+    ("AVA",  "Avista Corporation"),
+    ("DOPD", "Douglas County PUD"),
+    ("GCPD", "Grant County PUD"),
+    ("CHPD", "Chelan County PUD"),
+    ("TPWR", "City of Tacoma"),
+    ("PNM",  "Public Service NM"),
+    ("EPE",  "El Paso Electric"),
+    ("TEPC", "Tucson Electric Power"),
+    ("IID",  "Imperial Irrigation District"),
+    ("LDWP", "LA Dept of Water & Power"),
+    ("BANC", "Balancing Auth of N. California"),
+    ("TIDC", "Turlock Irrigation District"),
+    ("NWMT", "Northwestern Energy MT"),
+    ("GWA",  "NaturEner Wind Watch MT"),
+    ("WALC", "WAPA Desert Southwest"),
+    ("DEAA", "Arlington Valley LLC"),
+    ("HGMA", "Harquahala Generating"),
+    // Texas
+    ("ERCO", "ERCOT (Texas)"),
+    // Eastern Interconnection
+    ("MISO", "Midcontinent ISO"),
+    ("PJM",  "PJM Interconnection"),
+    ("SWPP", "Southwest Power Pool"),
+    ("TVA",  "Tennessee Valley Authority"),
+    ("SOCO", "Southern Company"),
+    ("DUK",  "Duke Energy"),
+    ("CPLE", "Duke Energy Progress East"),
+    ("CPLW", "Duke Energy Progress West"),
+    ("SC",   "Santee Cooper"),
+    ("SCEG", "Dominion Energy SC"),
+    ("FPL",  "Florida Power & Light"),
+    ("FPC",  "Duke Energy Florida"),
+    ("FMPP", "FL Municipal Power Pool"),
+    ("GVL",  "Gainesville Regional Utilities"),
+    ("HST",  "City of Homestead FL"),
+    ("JEA",  "Jacksonville Electric Auth"),
+    ("TAL",  "City of Tallahassee FL"),
+    ("SEPA", "Southeastern Power Admin"),
+    ("LGEE", "LG&E and KU Energy"),
+    ("AECI", "Associated Electric Coop"),
+    ("OVEC", "Ohio Valley Electric Corp"),
+    ("EDE",  "Empire District Electric"),
+    ("NYIS", "New York ISO"),
+    ("ISNE", "ISO New England"),
+    // Canada / Mexico
+    ("HQT",  "Hydro-Québec"),
+    ("IESO", "Ontario IESO"),
+    ("MHEB", "Manitoba Hydro"),
+    ("NBSO", "NB System Operator"),
+    ("AESO", "Alberta Electric System"),
+    ("BCHA", "BC Hydro"),
+    ("CEN",  "CFE Mexico"),
+    ("CFE",  "CFE Mexico"),
 ];
 
 fn normalize_fuel(code: &str) -> &'static str {
@@ -145,28 +209,31 @@ async fn fetch_generation(state: &AppState) -> Result<Vec<BaGenData>> {
         }
     }
 
-    let ba_facets: String = BALANCING_AUTHORITIES
-        .iter()
-        .map(|(id, _)| format!("&facets[respondent][]={}", id))
-        .collect();
-
+    // No respondent facet — fetch all reporting BAs in one shot.
+    // ~66 BAs × 6 fuel types = ~400 records/period; length=4000 covers ≥10 periods.
     let url = format!(
         "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data/\
          ?api_key={}\
          &frequency=hourly\
          &data[]=value\
-         {}\
          &sort[0][column]=period\
          &sort[0][direction]=desc\
-         &length=500",
-        state.eia_key, ba_facets
+         &length=4000",
+        state.eia_key
     );
 
     let resp: EiaFuelResponse = state.http.get(&url).send().await?.json().await?;
     let records = resp.response.data;
 
-    let period = records.first().map(|r| r.period.clone()).unwrap_or_default();
-    let latest: Vec<&FuelTypeRecord> = records.iter().filter(|r| r.period == period).collect();
+    // Each BA may have a different reporting lag — find the most recent period per BA
+    let mut ba_latest: HashMap<String, String> = HashMap::new();
+    for r in &records {
+        let entry = ba_latest.entry(r.respondent.clone()).or_insert_with(|| r.period.clone());
+        if r.period > *entry { *entry = r.period.clone(); }
+    }
+    let latest: Vec<&FuelTypeRecord> = records.iter()
+        .filter(|r| ba_latest.get(&r.respondent).map_or(false, |p| *p == r.period))
+        .collect();
 
     // Aggregate: BA → fuel → total MW
     let mut ba_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
@@ -212,66 +279,82 @@ async fn generation_handler(
 }
 
 async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
-    let ba_list = BALANCING_AUTHORITIES
-        .iter()
-        .map(|(id, _)| *id)
-        .collect::<Vec<_>>()
-        .join(",");
-
-    // EIA v2 — electricity/rto/interchange-data, most recent hour
+    // No fromba/toba facets — query all BA pairs the EIA reports, then build
+    // nodes/links from whatever comes back.  The frontend skips any BA it has
+    // no screen position for, so adding new BAs here is zero-config.
+    //
+    // ~400-600 active directed pairs × ~3 trailing periods ≈ 1500-2000 records;
+    // length=5000 gives headroom without hitting the API hard.
     let url = format!(
         "https://api.eia.gov/v2/electricity/rto/interchange-data/data/\
          ?api_key={}\
          &frequency=hourly\
          &data[]=value\
-         &facets[fromba][]={}\
          &sort[0][column]=period\
          &sort[0][direction]=desc\
-         &length=500\
-         &offset=0",
-        state.eia_key, ba_list,
+         &length=5000",
+        state.eia_key,
     );
 
     let resp: EiaResponse = state.http.get(&url).send().await?.json().await?;
     let records = resp.response.data;
 
-    // Use the most recent period in the response
-    let period = records
-        .first()
-        .map(|r| r.period.clone())
-        .unwrap_or_default();
+    // Label lookup — unknown BAs fall back to their ID string
+    let ba_label: HashMap<&str, &str> = BA_LABELS.iter().cloned().collect();
 
-    // Keep only records from the most recent period
-    let latest: Vec<&EiaRecord> = records.iter().filter(|r| r.period == period).collect();
+    // For each directed pair (from, to), keep only the most recent record.
+    // Different BAs report with different lags — picking a single global period
+    // silently drops every BA that hasn't caught up to the fastest reporter.
+    let mut pair_latest: HashMap<(String, String), (String, f64)> = HashMap::new();
+    for r in &records {
+        let value = match r.value { Some(v) if v != 0.0 => v, _ => continue };
+        let key = (r.from_ba.clone(), r.to_ba.clone());
+        let is_newer = pair_latest.get(&key).map_or(true, |(p, _)| r.period > *p);
+        if is_newer { pair_latest.insert(key, (r.period.clone(), value)); }
+    }
 
-    let nodes = BALANCING_AUTHORITIES
-        .iter()
-        .map(|(id, label)| Node {
-            id: id.to_string(),
-            label: label.to_string(),
-        })
-        .collect();
+    // Build node list from every BA that appears in the data
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for (from, to) in pair_latest.keys() {
+        seen.insert(from.clone());
+        seen.insert(to.clone());
+    }
+    let mut nodes: Vec<Node> = seen.into_iter().map(|id| {
+        let label = ba_label.get(id.as_str()).copied().unwrap_or(&id).to_string();
+        Node { id, label }
+    }).collect();
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let links = latest
-        .iter()
-        .filter_map(|r| {
-            let value = r.value?;
-            if value == 0.0 {
-                return None;
-            }
-            Some(Link {
-                source: r.from_ba.clone(),
-                target: r.to_ba.clone(),
-                value,
+    // Net flow per canonical ordered pair (A < B lexicographically)
+    let mut net: HashMap<(String, String), f64> = HashMap::new();
+    for ((from, to), (_, value)) in &pair_latest {
+        let (a, b, sign) = if from < to {
+            (from.clone(), to.clone(),  1.0_f64)
+        } else {
+            (to.clone(),  from.clone(), -1.0_f64)
+        };
+        *net.entry((a, b)).or_insert(0.0) += value * sign;
+    }
+
+    // Report the most recent period we actually used (best-available across all pairs)
+    let period = pair_latest.values()
+        .map(|(p, _)| p.as_str())
+        .max()
+        .unwrap_or("")
+        .to_string();
+
+    let links = net.into_iter()
+        .filter_map(|((a, b), net_val)| {
+            if net_val.abs() < 1.0 { return None; }
+            Some(if net_val >= 0.0 {
+                Link { source: a, target: b, value: net_val }
+            } else {
+                Link { source: b, target: a, value: -net_val }
             })
         })
         .collect();
 
-    Ok(GraphData {
-        nodes,
-        links,
-        period,
-    })
+    Ok(GraphData { nodes, links, period })
 }
 
 async fn interchange_handler(

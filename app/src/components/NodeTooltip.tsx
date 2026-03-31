@@ -59,31 +59,33 @@ export function NodeTooltip({ nodeId, x, y, data }: Props) {
             top: y - 14,
             zIndex: 50,
             pointerEvents: 'none',
-            background: 'rgba(8,8,8,0.97)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.95)',
+            border: '1px solid rgba(0,0,0,0.08)',
+            borderRadius: 8,
             padding: '10px 14px',
             fontFamily: 'var(--font-mono)',
             fontSize: 10,
             lineHeight: 1.9,
             letterSpacing: '0.04em',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
           }}
         >
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', marginBottom: 2 }}>
+          <div style={{ fontSize: 11, color: 'rgba(0,0,0,0.8)', marginBottom: 2 }}>
             {label}
           </div>
-          <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: 9, marginBottom: 6 }}>
+          <div style={{ color: 'rgba(0,0,0,0.3)', fontSize: 9, marginBottom: 6 }}>
             {nodeId}
           </div>
           <div style={{
-            borderTop: '1px solid rgba(255,255,255,0.06)',
+            borderTop: '1px solid rgba(0,0,0,0.06)',
             paddingTop: 6,
             display: 'flex',
             justifyContent: 'space-between',
             gap: 20,
-            color: 'rgba(255,255,255,0.3)',
+            color: 'rgba(0,0,0,0.4)',
           }}>
             <span>{isExport ? 'net export' : 'net import'}</span>
-            <span style={{ color: isExport ? '#4a9eff' : '#ff8040' }}>
+            <span style={{ color: isExport ? '#2563eb' : '#ea580c' }}>
               {absMW} MW
             </span>
           </div>

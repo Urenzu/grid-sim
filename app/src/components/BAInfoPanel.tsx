@@ -26,11 +26,11 @@ const BA_LABELS: Record<string, string> = {
 }
 
 const BA_COLORS: Record<string, string> = {
-  BPAT: '#4a9eff', PACW: '#38c4f0', CISO: '#f0c93a', IPCO: '#5bcce0',
-  NEVP: '#f0a83a', PACE: '#8870e0', AZPS: '#f07840', SRP:  '#e86030',
-  WACM: '#7090d8', PSCO: '#5878c8', SWPP: '#40c878', ERCO: '#e84848',
-  MISO: '#50b870', TVA:  '#38c0a8', PJM:  '#7878f0', DUK:  '#90c840',
-  SC:   '#b0d840', FPL:  '#f09040', NYIS: '#9090f8', ISNE: '#c0c0ff',
+  BPAT: '#2563eb', PACW: '#0891b2', CISO: '#ca8a04', IPCO: '#0e7490',
+  NEVP: '#d97706', PACE: '#7c3aed', AZPS: '#ea580c', SRP:  '#dc2626',
+  WACM: '#4f6d9a', PSCO: '#3b5998', SWPP: '#059669', ERCO: '#dc2626',
+  MISO: '#16a34a', TVA:  '#0d9488', PJM:  '#6366f1', DUK:  '#65a30d',
+  SC:   '#84cc16', FPL:  '#ea580c', NYIS: '#7c3aed', ISNE: '#8b5cf6',
 }
 
 function fmtMW(mw: number) {
@@ -45,7 +45,7 @@ interface Props {
 }
 
 export function BAInfoPanel({ baId, data, genData }: Props) {
-  const color  = baId ? (BA_COLORS[baId] ?? '#ffffff') : '#ffffff'
+  const color  = baId ? (BA_COLORS[baId] ?? '#333333') : '#333333'
   const label  = baId ? (BA_LABELS[baId] ?? baId) : null
   const baGen  = baId ? (genData?.find(d => d.ba === baId) ?? null) : null
 
@@ -71,7 +71,7 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
     : []
 
   const isExport  = net >= 0
-  const flowColor = isExport ? '#4a9eff' : '#ff8040'
+  const flowColor = isExport ? '#2563eb' : '#ea580c'
 
   return (
     <div style={{
@@ -98,20 +98,20 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
               <div style={{
                 width: 9, height: 9, borderRadius: '50%',
                 background: color,
-                boxShadow: `0 0 8px ${color}88`,
+                boxShadow: `0 0 6px ${color}44`,
                 flexShrink: 0,
               }} />
               <div>
                 <div style={{
                   fontSize: 12, fontFamily: 'var(--font-mono)',
-                  color: 'rgba(255,255,255,0.82)', lineHeight: 1.3,
+                  color: 'rgba(0,0,0,0.8)', lineHeight: 1.3,
                 }}>
                   {label}
                 </div>
                 <div style={{
                   fontSize: 8, fontFamily: 'var(--font-mono)',
                   letterSpacing: '0.18em',
-                  color: 'rgba(255,255,255,0.2)', marginTop: 2,
+                  color: 'rgba(0,0,0,0.25)', marginTop: 2,
                 }}>
                   {baId}
                 </div>
@@ -153,15 +153,15 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
                   }}>
                     <span style={{
                       fontFamily: 'var(--font-mono)', fontSize: 10,
-                      color: 'rgba(255,255,255,0.32)',
+                      color: 'rgba(0,0,0,0.4)',
                     }}>
                       {p.id}
                     </span>
                     <span style={{
                       fontFamily: 'var(--font-mono)', fontSize: 10,
-                      color: p.flow >= 0 ? '#4a9eff' : '#ff8040',
+                      color: p.flow >= 0 ? '#2563eb' : '#ea580c',
                     }}>
-                      {p.flow >= 0 ? '↑' : '↓'} {fmtMW(p.flow)}
+                      {p.flow >= 0 ? '\u2191' : '\u2193'} {fmtMW(p.flow)}
                     </span>
                   </div>
                 ))}
@@ -170,7 +170,6 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   )
 }
@@ -180,7 +179,7 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
 function Divider({ top = 10, bottom = 10 }: { top?: number; bottom?: number }) {
   return (
     <div style={{
-      borderTop: '1px solid rgba(255,255,255,0.06)',
+      borderTop: '1px solid rgba(0,0,0,0.06)',
       marginTop: top, marginBottom: bottom,
     }} />
   )
@@ -192,7 +191,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
       fontFamily: 'var(--font-mono)',
       fontSize: 7, letterSpacing: '0.2em',
       textTransform: 'uppercase',
-      color: 'rgba(255,255,255,0.16)',
+      color: 'rgba(0,0,0,0.25)',
       marginBottom: 8,
     }}>
       {children}
@@ -208,13 +207,13 @@ function Row({ label, value, valueColor }: { label: string; value: string; value
     }}>
       <span style={{
         fontFamily: 'var(--font-mono)', fontSize: 9,
-        color: 'rgba(255,255,255,0.25)',
+        color: 'rgba(0,0,0,0.35)',
       }}>
         {label}
       </span>
       <span style={{
         fontFamily: 'var(--font-mono)', fontSize: 10,
-        color: valueColor ?? 'rgba(255,255,255,0.55)',
+        color: valueColor ?? 'rgba(0,0,0,0.6)',
       }}>
         {value}
       </span>
@@ -235,11 +234,10 @@ function FuelRow({ fuel, mw, total }: { fuel: string; mw: number; total: number 
           <div style={{
             width: 5, height: 5, borderRadius: '50%',
             background: fc, flexShrink: 0,
-            boxShadow: `0 0 4px ${fc}66`,
           }} />
           <span style={{
             fontFamily: 'var(--font-mono)', fontSize: 9,
-            color: 'rgba(255,255,255,0.32)',
+            color: 'rgba(0,0,0,0.4)',
             textTransform: 'capitalize',
           }}>
             {fuel}
@@ -247,30 +245,30 @@ function FuelRow({ fuel, mw, total }: { fuel: string; mw: number; total: number 
         </div>
         <span style={{
           fontFamily: 'var(--font-mono)', fontSize: 9,
-          color: 'rgba(255,255,255,0.48)',
+          color: 'rgba(0,0,0,0.55)',
         }}>
           {fmtMW(mw)}{' '}
-          <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: 8 }}>{pct}%</span>
+          <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: 8 }}>{pct}%</span>
         </span>
       </div>
       {/* Progress bar */}
       <div style={{
         height: 2, borderRadius: 1,
-        background: 'rgba(255,255,255,0.05)',
+        background: 'rgba(0,0,0,0.06)',
         overflow: 'hidden',
       }}>
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
           transition={{ type: 'spring', stiffness: 120, damping: 20, delay: 0.05 }}
-          style={{ height: '100%', borderRadius: 1, background: fc, opacity: 0.7 }}
+          style={{ height: '100%', borderRadius: 1, background: fc, opacity: 0.8 }}
         />
       </div>
     </div>
   )
 }
 
-function FuelDonut({ fuels, total }: { fuels: Array<{fuel: string; mw: number}>; total: number }) {
+function FuelDonut({ fuels, total }: { fuels: Array<{ fuel: string; mw: number }>; total: number }) {
   const R = 30, r = 19, cx = 35, cy = 35
   let angle = -Math.PI / 2
 
@@ -302,12 +300,12 @@ function FuelDonut({ fuels, total }: { fuels: Array<{fuel: string; mw: number}>;
               d={arc(start, end, R, r, large)}
               fill={color}
               opacity={0.85}
-              stroke="rgba(10,10,10,0.5)"
+              stroke="rgba(255,255,255,0.8)"
               strokeWidth={0.5}
             />
           )
         })}
-        <circle cx={cx} cy={cy} r={r - 1} fill="rgba(10,10,10,0.95)" />
+        <circle cx={cx} cy={cy} r={r - 1} fill="rgba(255,255,255,0.95)" />
       </svg>
     </div>
   )

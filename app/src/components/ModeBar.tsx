@@ -6,9 +6,16 @@ const MODES: { id: Mode; label: string }[] = [
   { id: 'generation', label: 'Generation' },
 ]
 
-const LAYERS: { id: LayerKey; label: string }[] = [
+const FLOW_LAYERS: { id: LayerKey; label: string }[] = [
   { id: 'arcs',      label: 'Arcs'      },
   { id: 'particles', label: 'Particles' },
+]
+
+const GLOBAL_LAYERS: { id: LayerKey; label: string; on: string; border: string; text: string }[] = [
+  { id: 'nuclear', label: 'Nuclear', on: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)',  text: '#7c3aed' },
+  { id: 'hydro',   label: 'Hydro',   on: 'rgba(37,99,235,0.1)',   border: 'rgba(37,99,235,0.3)',   text: '#1d4ed8' },
+  { id: 'wind',    label: 'Wind',    on: 'rgba(8,145,178,0.1)',   border: 'rgba(8,145,178,0.3)',   text: '#0e7490' },
+  { id: 'solar',   label: 'Solar',   on: 'rgba(217,119,6,0.1)',   border: 'rgba(217,119,6,0.3)',   text: '#b45309' },
 ]
 
 interface Props {
@@ -33,7 +40,33 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
       pointerEvents: 'none',
     }}>
 
-      {/* Layer toggles — flow mode only */}
+      {/* Generation facility toggles — always visible */}
+      <div style={{ display: 'flex', gap: 5, pointerEvents: 'all' }}>
+        {GLOBAL_LAYERS.map(({ id, label, on: onBg, border: onBorder, text: onText }) => {
+          const active = layers.has(id)
+          return (
+            <button key={id} onClick={() => onLayerToggle(id)} style={{
+              background:         active ? onBg : 'rgba(255,255,255,0.8)',
+              backdropFilter:     'blur(14px)',
+              WebkitBackdropFilter: 'blur(14px)',
+              border:             `1px solid ${active ? onBorder : 'rgba(0,0,0,0.08)'}`,
+              borderRadius:       999,
+              color:              active ? onText : 'rgba(0,0,0,0.35)',
+              fontFamily:         'var(--font-mono)',
+              fontSize:           8,
+              letterSpacing:      '0.16em',
+              textTransform:      'uppercase' as const,
+              padding:            '5px 14px',
+              cursor:             'pointer',
+              transition:         'all 0.18s ease',
+            }}>
+              {label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Flow layer toggles */}
       {mode === 'flow' && (
         <motion.div
           initial={{ opacity: 0, y: 4 }}
@@ -42,16 +75,16 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
           transition={{ type: 'spring', stiffness: 400, damping: 32 }}
           style={{ display: 'flex', gap: 5, pointerEvents: 'all' }}
         >
-          {LAYERS.map(({ id, label }) => {
+          {FLOW_LAYERS.map(({ id, label }) => {
             const on = layers.has(id)
             return (
               <button key={id} onClick={() => onLayerToggle(id)} style={{
-                background: on ? 'rgba(0,229,255,0.1)' : 'rgba(10,10,10,0.75)',
+                background: on ? 'rgba(0,102,204,0.08)' : 'rgba(255,255,255,0.8)',
                 backdropFilter: 'blur(14px)',
                 WebkitBackdropFilter: 'blur(14px)',
-                border: `1px solid ${on ? 'rgba(0,229,255,0.3)' : 'rgba(255,255,255,0.07)'}`,
+                border: `1px solid ${on ? 'rgba(0,102,204,0.25)' : 'rgba(0,0,0,0.08)'}`,
                 borderRadius: 999,
-                color: on ? 'rgba(0,229,255,0.8)' : 'rgba(255,255,255,0.28)',
+                color: on ? '#0066cc' : 'rgba(0,0,0,0.35)',
                 fontFamily: 'var(--font-mono)',
                 fontSize: 8,
                 letterSpacing: '0.16em',
@@ -69,15 +102,16 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
 
       {/* Mode pill */}
       <div style={{
-        background: 'rgba(10,10,10,0.82)',
+        background: 'rgba(255,255,255,0.85)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        border: '1px solid rgba(0,0,0,0.08)',
         borderRadius: 999,
         padding: 4,
         display: 'flex',
         gap: 2,
         pointerEvents: 'all',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       }}>
         {MODES.map(({ id, label }) => (
           <button key={id} onClick={() => onMode(id)} style={{
@@ -85,7 +119,7 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
             background: 'transparent',
             border: 'none',
             borderRadius: 999,
-            color: mode === id ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.3)',
+            color: mode === id ? '#1a1a1a' : 'rgba(0,0,0,0.3)',
             fontFamily: 'var(--font-mono)',
             fontSize: 9,
             letterSpacing: '0.18em',
@@ -102,8 +136,8 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
                   position: 'absolute',
                   inset: 0,
                   borderRadius: 999,
-                  background: 'rgba(0,229,255,0.08)',
-                  border: '1px solid rgba(0,229,255,0.22)',
+                  background: 'rgba(0,102,204,0.08)',
+                  border: '1px solid rgba(0,102,204,0.2)',
                 }}
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />

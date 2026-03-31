@@ -1,7 +1,25 @@
-summary.md
-.env
+# Rust
 target/
-*.parquet
+Cargo.lock
+
+# Node / frontend
 node_modules/
 app/dist/
+app/dist-ssr/
+*.local
+*.log
+
+# Environment
+.env
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.sw?
+
+# Project-local scratch files
+summary.md
 .history/

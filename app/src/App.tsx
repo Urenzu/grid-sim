@@ -11,9 +11,9 @@ export default function App() {
   const { data, error, loading } = useGridData()
   const [hoveredBA, setHoveredBA] = useState<string | null>(null)
   const [mode,   setMode]   = useState<Mode>('flow')
-  const [layers, setLayers] = useState<Set<LayerKey>>(new Set(['arcs', 'particles']))
+  const [layers, setLayers] = useState<Set<LayerKey>>(new Set(['arcs', 'particles', 'nuclear', 'hydro', 'wind', 'solar']))
 
-  const { genData } = useGenerationData(mode === 'generation')
+  const { genData } = useGenerationData(true)
 
   function toggleLayer(l: LayerKey) {
     setLayers(prev => {

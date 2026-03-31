@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { GridData } from '../types'
 
-const API = 'http://localhost:3000/api/interchange'
+const API = '/api/interchange'
 const POLL_MS = 5 * 60 * 1000
 
 export function useGridData() {
