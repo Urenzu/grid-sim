@@ -40,9 +40,14 @@ export const BA_DEFS: [string, string, [number, number]][] = [
   ['BANC', 'N. California Balancing Auth',    [-121.5,  40.5]],
   ['TIDC', 'Turlock Irrigation District',     [-120.8,  37.6]],
   ['WALC', 'WAPA Desert Southwest',           [-112.1,  33.8]],
+  ['HGMA', 'Harquahala Generating',            [-113.5,  33.2]],
+  ['DEAA', 'Arlington Valley LLC',            [-112.7,  33.0]],
   // ── Texas ────────────────────────────────────────────────────────────────
   ['ERCO', 'ERCOT',                           [ -99.3,  31.5]],
   // ── Eastern Interconnection ──────────────────────────────────────────────
+  ['SPA',  'Southwestern Power Admin',         [ -95.5,  36.5]],
+  ['WAUW', 'WAPA Upper Great Plains',         [-101.5,  45.5]],
+  ['WWA',  'NaturEner Rim Rock MT',           [-108.3,  48.4]],
   ['SWPP', 'Southwest Power Pool',            [ -97.5,  38.5]],
   ['MISO', 'Midcontinent ISO',                [ -90.0,  42.5]],
   ['PJM',  'PJM Interconnection',             [ -79.5,  40.5]],
@@ -64,6 +69,8 @@ export const BA_DEFS: [string, string, [number, number]][] = [
   ['JEA',  'Jacksonville Electric Auth',      [ -81.7,  30.3]],
   ['GVL',  'Gainesville Regional Utilities',  [ -82.3,  29.7]],
   ['TAL',  'City of Tallahassee FL',          [ -84.3,  30.4]],
+  ['HST',  'City of Homestead FL',            [ -80.5,  25.5]],
+  ['SEC',  'Seminole Electric',               [ -81.2,  28.6]],
   ['NYIS', 'New York ISO',                    [ -75.5,  43.0]],
   ['ISNE', 'ISO New England',                 [ -71.8,  42.4]],
 ]
@@ -273,6 +280,114 @@ const WIND_FARMS: [string, number, number, number][] = [
   ['Criterion WV',           -79.22, 39.37,  186],
 ]
 
+const GAS_PLANTS: [string, number, number, number][] = [
+  // California
+  ['Moss Landing CA',        -121.79, 36.80, 2500],
+  ['Long Beach Gen CA',      -118.19, 33.76, 2160],
+  ['Haynes CA',              -118.08, 33.73, 1650],
+  ['Mountainview CA',        -117.28, 34.06, 1054],
+  ['Pastoria CA',            -119.10, 34.80,  750],
+  ['Elk Hills CA',           -119.43, 35.37,  550],
+  // Texas
+  ['Midlothian TX',           -97.00, 32.50, 2080],
+  ['Guadalupe TX',            -98.33, 29.78, 1050],
+  ['Panda Temple TX',         -97.35, 31.12,  758],
+  ['Magic Valley TX',         -97.70, 26.40,  750],
+  // Florida
+  ['FPL Martin FL',           -80.72, 27.10, 2500],
+  ['Duke Hines FL',           -82.73, 27.88, 2000],
+  ['FPL Cape Canaveral FL',   -80.61, 28.43, 1980],
+  ['Duke Citrus FL',          -82.85, 28.65, 1660],
+  ['FPL Port Everglades FL',  -80.12, 26.09, 1380],
+  // Arizona
+  ['Mesquite Power AZ',      -112.52, 33.25, 1250],
+  ['Redhawk AZ',             -112.71, 32.95, 1040],
+  ['Arlington Valley AZ',    -112.85, 33.55,  600],
+  // Nevada
+  ['Harry Allen NV',         -115.00, 36.55,  568],
+  ['Clark NV',               -114.83, 36.12,  564],
+  // Southeast
+  ['McDonough GA',            -84.55, 33.88, 3500],
+  ['Magnolia MS',             -89.77, 30.45,  838],
+  // Midwest
+  ['Midland Cogen MI',        -84.25, 43.62, 1548],
+  ['Lincoln Generating IL',   -88.16, 41.35,  990],
+  // New England
+  ['Mystic MA',               -71.05, 42.38, 1700],
+  ['Canal MA',                -70.56, 41.77,  500],
+  ['Granite Ridge NH',        -71.50, 43.30,  745],
+  // New York / New Jersey
+  ['Ravenswood NY',           -73.95, 40.77, 2000],
+  ['Cricket Valley NY',       -73.57, 41.54, 1100],
+  ['Linden Cogen NJ',         -74.22, 40.64, 1050],
+  // Mid-Atlantic
+  ['Panda Liberty PA',        -75.69, 40.10,  829],
+  ['Bethlehem PA',            -75.48, 40.67,  755],
+]
+
+const COAL_PLANTS: [string, number, number, number][] = [
+  // Appalachia / Mid-Atlantic
+  ['John Amos WV',           -81.76, 38.78, 2930],
+  ['Mountaineer WV',         -81.93, 39.22, 1300],
+  ['Mitchell WV',            -80.84, 39.65, 1560],
+  ['Harrison WV',            -80.35, 39.30, 1984],
+  ['Pleasants WV',           -81.27, 39.40, 1300],
+  // Southeast / TVA
+  ['Cumberland TN',          -87.64, 36.38, 2470],
+  ['Kingston TN',            -84.52, 35.88, 1456],
+  ['Gallatin TN',            -86.43, 36.38,  971],
+  ['Widows Creek AL',        -85.83, 34.88, 1978],
+  ['Gorgas AL',              -87.21, 33.88,  671],
+  ['Miller AL',              -86.95, 33.44, 2700],
+  ['Scherer GA',             -83.61, 33.07, 3564],
+  ['Bowen GA',               -85.07, 34.22, 3480],
+  ['Wansley GA',             -84.73, 33.49, 1862],
+  // Midwest
+  ['Laramie River WY',      -104.54, 42.04, 1710],
+  ['Colstrip MT',           -106.64, 45.89, 2094],
+  ['Basin Electric ND',      -99.67, 46.23, 1400],
+  ['Stanton ND',            -100.39, 47.32,  490],
+  ['James River ND',         -97.18, 46.92,  215],
+  ['Cardinal OH',            -80.54, 39.56, 1880],
+  ['Conesville OH',          -81.89, 40.22, 1320],
+  ['Sammis OH',              -80.63, 40.56, 2233],
+  ['Killen OH',              -83.99, 38.77,  600],
+  ['Clifty Creek IN',        -85.50, 38.59, 1303],
+  ['Rockport IN',            -82.63, 37.87, 2600],
+  ['Petersburg IN',          -87.27, 38.50, 1720],
+  ['Gibson IN',              -87.60, 38.33, 3340],
+  ['Wabash River IN',        -87.44, 39.72,  873],
+  ['Schahfer IN',            -87.27, 41.35, 2080],
+  ['Baldwin IL',             -89.82, 38.16, 1830],
+  ['Newton IL',              -88.31, 38.96, 1209],
+  ['Havana IL',              -90.00, 40.27,  469],
+  ['Powerton IL',            -89.55, 40.61,  1538],
+  ['Prairie State IL',       -89.49, 37.67, 1600],
+  ['Cardinal IA',            -91.66, 41.50,  630],
+  ['Ottumwa IA',             -92.42, 41.02,  726],
+  // Southwest / Plains
+  ['Navajo AZ',             -111.39, 36.81, 2250],
+  ['Four Corners NM',       -108.48, 36.72, 1800],
+  ['San Juan NM',           -108.17, 36.76, 1848],
+  ['Tolk TX',               -102.59, 33.79, 1070],
+  ['Oklaunion TX',           -99.00, 33.90,  780],
+  ['Martin Lake TX',         -94.57, 31.84, 2250],
+  ['Monticello TX',          -94.87, 33.09, 1880],
+  ['Big Brown TX',           -96.07, 31.71, 1186],
+  ['Limestone TX',           -96.37, 31.43, 1850],
+  ['W.A. Parish TX',         -95.63, 29.37, 2540],
+  // Appalachia South
+  ['Roxboro NC',             -78.95, 36.45, 2558],
+  ['Marshall NC',            -80.95, 35.56, 2092],
+  ['Allen NC',               -80.94, 35.24,  287],
+  // SWPP / Mid-continent
+  ['Iatan MO',               -94.83, 39.27, 1300],
+  ['Hawthorn MO',            -94.37, 39.07,  726],
+  ['Labadie MO',             -90.96, 38.54, 2372],
+  ['Thomas Hill MO',         -92.62, 39.60,  1201],
+  ['Holcomb KS',            -100.97, 37.98,  360],
+]
+
 const SOLAR_FARMS: [string, number, number, number][] = [
   // California
   ['Edwards Sanborn CA',    -117.84, 34.82, 1300],
@@ -321,16 +436,18 @@ export const BA_COLORS: Record<string, string> = {
   GCPD: '#075985', CHPD: '#0c4a6e', TPWR: '#1d4ed8', NWMT: '#92400e',
   GWA:  '#78350f', PNM:  '#b45309', EPE:  '#a16207', TEPC: '#92400e',
   IID:  '#c2410c', LDWP: '#9a3412', BANC: '#d97706', TIDC: '#b45309',
-  WALC: '#c2410c',
+  WALC: '#c2410c', HGMA: '#b45309', DEAA: '#a16207',
   // Texas
   ERCO: '#e11d48',
   // Eastern
+  SPA:  '#7c3aed', WAUW: '#4338ca', WWA:  '#78350f',
   SWPP: '#059669', MISO: '#16a34a', PJM:  '#6366f1', TVA:  '#0d9488',
   SOCO: '#0f766e', LGEE: '#0891b2', OVEC: '#0e7490', AECI: '#065f46',
   EDE:  '#047857', DUK:  '#65a30d', CPLE: '#4d7c0f', CPLW: '#3f6212',
   SCEG: '#713f12', SC:   '#78350f', SEPA: '#92400e',
   FPL:  '#f59e0b', FPC:  '#d97706', FMPP: '#b45309', JEA:  '#92400e',
   GVL:  '#78350f', TAL:  '#6b7280',
+  HST:  '#6b7280', SEC:  '#0d9488',
   NYIS: '#7c3aed', ISNE: '#8b5cf6',
 }
 
@@ -375,7 +492,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     pos:            new Map<string, [number, number]>(),
     arcData:        [] as Arc[],
     particles:      [] as Particle[],
-    plantPts:       { nuclear: [] as [number,number,number][], hydro: [] as [number,number,number][], wind: [] as [number,number,number][], solar: [] as [number,number,number][] },
+    plantPts:       { nuclear: [] as [number,number,number][], hydro: [] as [number,number,number][], wind: [] as [number,number,number][], solar: [] as [number,number,number][], gas: [] as [number,number,number][], coal: [] as [number,number,number][] },
     raf:            0,
     mode:           'flow' as Mode,
     layerArcs:      true,
@@ -384,6 +501,8 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     layerHydro:     true,
     layerWind:      true,
     layerSolar:     true,
+    layerGas:       true,
+    layerCoal:      true,
     genMap:         new Map<string, BaGenData>(),
   })
 
@@ -451,6 +570,8 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
         ['hydro',   HYDRO_PLANTS],
         ['wind',    WIND_FARMS],
         ['solar',   SOLAR_FARMS],
+        ['gas',     GAS_PLANTS],
+        ['coal',    COAL_PLANTS],
       ]
       for (const [fuel, list] of plantSources) {
         const pts = S.current.plantPts[fuel as keyof typeof S.current.plantPts]
@@ -563,7 +684,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     function frame() {
       const { transform: T, arcData, particles, plantPts, mode: m,
               layerArcs, layerParticles, layerNuclear, layerHydro, layerWind, layerSolar,
-              genMap, pos } = S.current
+              layerGas, layerCoal, genMap, pos } = S.current
       ctx.setTransform(T.k, 0, 0, T.k, T.x, T.y)
       ctx.clearRect(-T.x / T.k, -T.y / T.k, W / T.k, H / T.k)
 
@@ -759,6 +880,45 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
         }
       }
 
+      // gas — orange square (industrial)
+      if (layerGas && plantPts.gas.length > 0) {
+        const maxCap = Math.max(...plantPts.gas.map(p => p[2]))
+        for (const [x, y, cap] of plantPts.gas) {
+          const r = capR(cap, maxCap, 1.2, 5.0)
+          const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 5)
+          halo.addColorStop(0, 'rgba(234,88,12,0.18)'); halo.addColorStop(1, 'rgba(234,88,12,0)')
+          ctx.beginPath(); ctx.arc(x, y, r * 5, 0, Math.PI * 2); ctx.fillStyle = halo; ctx.fill()
+          const s = r * 1.3
+          ctx.beginPath()
+          ctx.rect(x - s, y - s, s * 2, s * 2)
+          ctx.fillStyle = 'rgba(234,88,12,0.85)'
+          ctx.shadowColor = 'rgba(234,88,12,0.5)'; ctx.shadowBlur = r * 3
+          ctx.fill(); ctx.shadowBlur = 0
+        }
+      }
+
+      // coal — dark red pentagon
+      if (layerCoal && plantPts.coal.length > 0) {
+        const maxCap = Math.max(...plantPts.coal.map(p => p[2]))
+        for (const [x, y, cap] of plantPts.coal) {
+          const r = capR(cap, maxCap, 1.2, 5.5)
+          const halo = ctx.createRadialGradient(x, y, 0, x, y, r * 5)
+          halo.addColorStop(0, 'rgba(220,38,38,0.16)'); halo.addColorStop(1, 'rgba(220,38,38,0)')
+          ctx.beginPath(); ctx.arc(x, y, r * 5, 0, Math.PI * 2); ctx.fillStyle = halo; ctx.fill()
+          // Pentagon
+          ctx.beginPath()
+          for (let i = 0; i < 5; i++) {
+            const a = (i / 5) * Math.PI * 2 - Math.PI / 2
+            const px = x + r * 1.5 * Math.cos(a), py = y + r * 1.5 * Math.sin(a)
+            i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py)
+          }
+          ctx.closePath()
+          ctx.fillStyle = 'rgba(220,38,38,0.85)'
+          ctx.shadowColor = 'rgba(220,38,38,0.5)'; ctx.shadowBlur = r * 3
+          ctx.fill(); ctx.shadowBlur = 0
+        }
+      }
+
       S.current.raf = requestAnimationFrame(frame)
     }
     S.current.raf = requestAnimationFrame(frame)
@@ -767,7 +927,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
       cancelAnimationFrame(S.current.raf)
       svg.selectAll('*').remove(); svg.on('.zoom', null)
       S.current.pos.clear(); S.current.arcData = []; S.current.particles = []
-      S.current.plantPts = { nuclear: [] as [number,number,number][], hydro: [] as [number,number,number][], wind: [] as [number,number,number][], solar: [] as [number,number,number][] }
+      S.current.plantPts = { nuclear: [] as [number,number,number][], hydro: [] as [number,number,number][], wind: [] as [number,number,number][], solar: [] as [number,number,number][], gas: [] as [number,number,number][], coal: [] as [number,number,number][] }
     }
   }, []) // eslint-disable-line
 
@@ -844,6 +1004,8 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     S.current.layerHydro     = layers.has('hydro')
     S.current.layerWind      = layers.has('wind')
     S.current.layerSolar     = layers.has('solar')
+    S.current.layerGas       = layers.has('gas')
+    S.current.layerCoal      = layers.has('coal')
     if (mode !== 'flow') S.current.particles = []
   }, [mode, layers])
 

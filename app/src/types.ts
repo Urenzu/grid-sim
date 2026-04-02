@@ -23,4 +23,4 @@ export interface BaGenData {
 }
 
 export type Mode     = 'flow' | 'generation'
-export type LayerKey = 'arcs' | 'particles' | 'nuclear' | 'hydro' | 'wind' | 'solar'
+export type LayerKey = 'arcs' | 'particles' | 'nuclear' | 'hydro' | 'wind' | 'solar' | 'gas' | 'coal'

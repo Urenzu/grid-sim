@@ -16,6 +16,8 @@ const GLOBAL_LAYERS: { id: LayerKey; label: string; on: string; border: string; 
   { id: 'hydro',   label: 'Hydro',   on: 'rgba(37,99,235,0.1)',   border: 'rgba(37,99,235,0.3)',   text: '#1d4ed8' },
   { id: 'wind',    label: 'Wind',    on: 'rgba(8,145,178,0.1)',   border: 'rgba(8,145,178,0.3)',   text: '#0e7490' },
   { id: 'solar',   label: 'Solar',   on: 'rgba(217,119,6,0.1)',   border: 'rgba(217,119,6,0.3)',   text: '#b45309' },
+  { id: 'gas',     label: 'Gas',     on: 'rgba(234,88,12,0.1)',   border: 'rgba(234,88,12,0.3)',   text: '#c2410c' },
+  { id: 'coal',    label: 'Coal',    on: 'rgba(220,38,38,0.1)',   border: 'rgba(220,38,38,0.3)',   text: '#b91c1c' },
 ]
 
 interface Props {

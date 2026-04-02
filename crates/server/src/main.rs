@@ -173,6 +173,10 @@ const BA_LABELS: &[(&str, &str)] = &[
     ("AECI", "Associated Electric Coop"),
     ("OVEC", "Ohio Valley Electric Corp"),
     ("EDE",  "Empire District Electric"),
+    ("SPA",  "Southwestern Power Admin"),
+    ("WAUW", "WAPA Upper Great Plains"),
+    ("WWA",  "NaturEner Rim Rock MT"),
+    ("SEC",  "Seminole Electric"),
     ("NYIS", "New York ISO"),
     ("ISNE", "ISO New England"),
     // Canada / Mexico
