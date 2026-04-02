@@ -524,6 +524,18 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
         .on('zoom', e => {
           S.current.transform = e.transform
           scene.attr('transform', e.transform.toString())
+          const k = e.transform.k
+          // Keep visual sizes constant — divide SVG attributes by zoom scale
+          scene.selectAll<SVGCircleElement, unknown>('circle.ba-dot')
+            .attr('r', 5 / k).attr('stroke-width', 1.2 / k)
+          scene.selectAll<SVGCircleElement, unknown>('circle.ba-hit')
+            .attr('r', 18 / k)
+          scene.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-label')
+            .attr('font-size', 7 / k)
+            .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - 10 / k : 0 })
+          scene.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-name')
+            .attr('font-size', 5.5 / k)
+            .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] + 16 / k : 0 })
           const el = document.getElementById('stat-zoom')
           if (el) el.textContent = e.transform.k.toFixed(1) + '\u00d7'
         })
@@ -935,10 +947,11 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
   useEffect(() => {
     const svg = d3.select(svgRef.current!)
     const pos = S.current.pos
+    const k   = S.current.transform.k
 
     svg.selectAll<SVGPathElement, any>('.ba-fill')
       .each(function () {
-        const baId     = d3.select(this).attr('data-ba')
+        const baId      = d3.select(this).attr('data-ba')
         const isHovered = baId === hoveredBA
         const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333333')
         d3.select(this).transition().duration(200)
@@ -947,24 +960,24 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
 
     svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-ring')
       .transition().duration(200)
-      .attr('r',       ([id]) => id === hoveredBA ? 17 : 10)
+      .attr('r',       ([id]) => (id === hoveredBA ? 17 : 10) / k)
       .style('opacity',([id]) => id === hoveredBA ? 0.65 : 0)
 
     svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-dot')
       .transition().duration(200)
-      .attr('r',    ([id]) => id === hoveredBA ? 8 : 5)
+      .attr('r',           ([id]) => (id === hoveredBA ? 8 : 5) / k)
+      .attr('stroke-width',([id]) => (id === hoveredBA ? 2 : 1.2) / k)
       .attr('fill', ([id]) => {
         const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
         return id === hoveredBA ? `rgba(${r},${g},${b},1)` : `rgba(${r},${g},${b},0.85)`
       })
-      .attr('stroke-width', ([id]) => id === hoveredBA ? 2 : 1.2)
 
     svg.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-label')
       .transition().duration(200)
-      .attr('font-size',     ([id]) => id === hoveredBA ? 11 : 7)
+      .attr('font-size',     ([id]) => (id === hoveredBA ? 11 : 7) / k)
       .attr('font-weight',   ([id]) => id === hoveredBA ? '600' : '500')
       .attr('letter-spacing',([id]) => id === hoveredBA ? '0.14em' : '0.1em')
-      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - (id === hoveredBA ? 18 : 10) : 0 })
+      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - (id === hoveredBA ? 18 : 10) / k : 0 })
       .attr('fill', ([id]) => {
         if (id !== hoveredBA) return 'rgba(0,0,0,0.45)'
         const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
@@ -973,12 +986,13 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
 
     svg.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-name')
       .transition().duration(200)
+      .attr('font-size', ([id]) => (id === hoveredBA ? 7 : 5.5) / k)
+      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] + 16 / k : 0 })
       .attr('fill', ([id]) => {
         if (id !== hoveredBA) return 'rgba(0,0,0,0.18)'
         const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
         return `rgba(${r},${g},${b},0.7)`
       })
-      .attr('font-size', ([id]) => id === hoveredBA ? 7 : 5.5)
   }, [hoveredBA])
 
   // ── Rebuild arcs on new data ──────────────────────────────────────────
