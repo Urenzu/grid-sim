@@ -1,37 +1,11 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { GridData, BaGenData } from '../types'
-import { FUEL_COLORS } from './GridMap'
+import { FUEL_COLORS, BA_COLORS, BA_DEFS } from './GridMap'
 
-const BA_LABELS: Record<string, string> = {
-  BPAT: 'Bonneville Power Admin',
-  PACW: 'PacifiCorp West',
-  CISO: 'California ISO',
-  IPCO: 'Idaho Power',
-  NEVP: 'NV Energy',
-  PACE: 'PacifiCorp East',
-  AZPS: 'Arizona Public Service',
-  SRP:  'Salt River Project',
-  WACM: 'WAPA Colorado',
-  PSCO: 'Xcel Energy Colorado',
-  SWPP: 'Southwest Power Pool',
-  ERCO: 'ERCOT',
-  MISO: 'Midcontinent ISO',
-  TVA:  'Tennessee Valley Authority',
-  PJM:  'PJM Interconnection',
-  DUK:  'Duke Energy',
-  SC:   'South Carolina E&G',
-  FPL:  'Florida Power & Light',
-  NYIS: 'New York ISO',
-  ISNE: 'ISO New England',
-}
-
-const BA_COLORS: Record<string, string> = {
-  BPAT: '#2563eb', PACW: '#0891b2', CISO: '#ca8a04', IPCO: '#0e7490',
-  NEVP: '#d97706', PACE: '#7c3aed', AZPS: '#ea580c', SRP:  '#dc2626',
-  WACM: '#4f6d9a', PSCO: '#3b5998', SWPP: '#059669', ERCO: '#dc2626',
-  MISO: '#16a34a', TVA:  '#0d9488', PJM:  '#6366f1', DUK:  '#65a30d',
-  SC:   '#84cc16', FPL:  '#ea580c', NYIS: '#7c3aed', ISNE: '#8b5cf6',
-}
+// Derived from BA_DEFS — stays in sync automatically as BAs are added
+const BA_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  BA_DEFS.map(([id, label]) => [id, label])
+)
 
 function fmtMW(mw: number) {
   const abs = Math.abs(mw)
@@ -46,7 +20,7 @@ interface Props {
 
 export function BAInfoPanel({ baId, data, genData }: Props) {
   const color  = baId ? (BA_COLORS[baId] ?? '#333333') : '#333333'
-  const label  = baId ? (BA_LABELS[baId] ?? baId) : null
+  const label  = baId ? (BA_LABEL_MAP[baId] ?? baId) : null
   const baGen  = baId ? (genData?.find(d => d.ba === baId) ?? null) : null
 
   const links  = data?.links ?? []
@@ -63,11 +37,10 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
         .filter(l => l.source === baId || l.target === baId)
         .map(l => {
           const partnerId = l.source === baId ? l.target : l.source
-          const flow = l.source === baId ? l.value : -l.value
+          const flow      = l.source === baId ? l.value : -l.value
           return { id: partnerId, flow }
         })
         .sort((a, b) => Math.abs(b.flow) - Math.abs(a.flow))
-        .slice(0, 4)
     : []
 
   const isExport  = net >= 0
@@ -141,30 +114,53 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
               </>
             )}
 
-            {/* ── Top exchanges ── */}
+            {/* ── All exchanges ── */}
             {partners.length > 0 && (
               <>
                 <Divider top={12} bottom={10} />
-                <SectionLabel>Exchanges</SectionLabel>
-                {partners.map(p => (
-                  <div key={p.id} style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    marginBottom: 5, alignItems: 'center',
-                  }}>
-                    <span style={{
-                      fontFamily: 'var(--font-mono)', fontSize: 10,
-                      color: 'rgba(0,0,0,0.4)',
-                    }}>
-                      {p.id}
-                    </span>
-                    <span style={{
-                      fontFamily: 'var(--font-mono)', fontSize: 10,
-                      color: p.flow >= 0 ? '#2563eb' : '#ea580c',
-                    }}>
-                      {p.flow >= 0 ? '\u2191' : '\u2193'} {fmtMW(p.flow)}
-                    </span>
-                  </div>
-                ))}
+                <SectionLabel>Exchanges ({partners.length})</SectionLabel>
+                <div style={{ maxHeight: 160, overflowY: 'auto', overflowX: 'hidden' }}>
+                  {partners.map(p => {
+                    const partnerColor = BA_COLORS[p.id] ?? '#6b7280'
+                    const partnerLabel = BA_LABEL_MAP[p.id] ?? p.id
+                    return (
+                      <div key={p.id} style={{
+                        display: 'flex', justifyContent: 'space-between',
+                        marginBottom: 6, alignItems: 'center', gap: 8,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                          <div style={{
+                            width: 5, height: 5, borderRadius: '50%',
+                            background: partnerColor, flexShrink: 0,
+                          }} />
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{
+                              fontFamily: 'var(--font-mono)', fontSize: 9,
+                              color: 'rgba(0,0,0,0.55)',
+                              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            }}>
+                              {partnerLabel}
+                            </div>
+                            <div style={{
+                              fontFamily: 'var(--font-mono)', fontSize: 7,
+                              letterSpacing: '0.1em',
+                              color: 'rgba(0,0,0,0.25)',
+                            }}>
+                              {p.id}
+                            </div>
+                          </div>
+                        </div>
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 10,
+                          color: p.flow >= 0 ? '#2563eb' : '#ea580c',
+                          flexShrink: 0,
+                        }}>
+                          {p.flow >= 0 ? '\u2191' : '\u2193'} {fmtMW(p.flow)}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
               </>
             )}
           </motion.div>
@@ -251,7 +247,6 @@ function FuelRow({ fuel, mw, total }: { fuel: string; mw: number; total: number 
           <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: 8 }}>{pct}%</span>
         </span>
       </div>
-      {/* Progress bar */}
       <div style={{
         height: 2, borderRadius: 1,
         background: 'rgba(0,0,0,0.06)',
