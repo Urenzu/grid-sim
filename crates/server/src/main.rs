@@ -136,6 +136,9 @@ const BA_LABELS: &[(&str, &str)] = &[
     ("GCPD", "Grant County PUD"),
     ("CHPD", "Chelan County PUD"),
     ("TPWR", "City of Tacoma"),
+    ("SCL",  "Seattle City Light"),
+    ("PSEI", "Puget Sound Energy"),
+    ("PGE",  "Portland General Electric"),
     ("PNM",  "Public Service NM"),
     ("EPE",  "El Paso Electric"),
     ("TEPC", "Tucson Electric Power"),
@@ -163,6 +166,7 @@ const BA_LABELS: &[(&str, &str)] = &[
     ("SCEG", "Dominion Energy SC"),
     ("FPL",  "Florida Power & Light"),
     ("FPC",  "Duke Energy Florida"),
+    ("TEC",  "Tampa Electric"),
     ("FMPP", "FL Municipal Power Pool"),
     ("GVL",  "Gainesville Regional Utilities"),
     ("HST",  "City of Homestead FL"),
@@ -175,6 +179,7 @@ const BA_LABELS: &[(&str, &str)] = &[
     ("EDE",  "Empire District Electric"),
     ("SPA",  "Southwestern Power Admin"),
     ("WAUW", "WAPA Upper Great Plains"),
+    ("BHBA", "Black Hills Energy"),
     ("WWA",  "NaturEner Rim Rock MT"),
     ("SEC",  "Seminole Electric"),
     ("NYIS", "New York ISO"),
@@ -222,7 +227,7 @@ async fn fetch_generation(state: &AppState) -> Result<Vec<BaGenData>> {
          &data[]=value\
          &sort[0][column]=period\
          &sort[0][direction]=desc\
-         &length=4000",
+         &length=8000",
         state.eia_key
     );
 

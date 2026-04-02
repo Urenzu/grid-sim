@@ -11,6 +11,8 @@ const FLOW_LAYERS: { id: LayerKey; label: string }[] = [
   { id: 'particles', label: 'Particles' },
 ]
 
+export const DEFAULT_LAYERS: LayerKey[] = ['arcs', 'particles', 'nuclear', 'hydro', 'wind', 'solar', 'gas', 'coal']
+
 const GLOBAL_LAYERS: { id: LayerKey; label: string; on: string; border: string; text: string }[] = [
   { id: 'nuclear', label: 'Nuclear', on: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)',  text: '#7c3aed' },
   { id: 'hydro',   label: 'Hydro',   on: 'rgba(37,99,235,0.1)',   border: 'rgba(37,99,235,0.3)',   text: '#1d4ed8' },

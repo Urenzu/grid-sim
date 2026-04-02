@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'motion/react'
 import type { GridData, BaGenData } from '../types'
-import { FUEL_COLORS, BA_COLORS, BA_DEFS } from './GridMap'
+import { FUEL_COLORS, BA_COLORS, BA_DEFS } from '../data/ba'
 
 // Derived from BA_DEFS — stays in sync automatically as BAs are added
 const BA_LABEL_MAP: Record<string, string> = Object.fromEntries(

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { GridMap }           from './components/GridMap'
 import { HUD }               from './components/HUD'
 import { BAInfoPanel }       from './components/BAInfoPanel'
-import { ModeBar }           from './components/ModeBar'
+import { ModeBar, DEFAULT_LAYERS } from './components/ModeBar'
 import { useGridData }       from './hooks/useGridData'
 import { useGenerationData } from './hooks/useGenerationData'
 import type { Mode, LayerKey } from './types'
@@ -11,9 +11,9 @@ export default function App() {
   const { data, error, loading } = useGridData()
   const [hoveredBA, setHoveredBA] = useState<string | null>(null)
   const [mode,   setMode]   = useState<Mode>('flow')
-  const [layers, setLayers] = useState<Set<LayerKey>>(new Set(['arcs', 'particles', 'nuclear', 'hydro', 'wind', 'solar', 'gas', 'coal']))
+  const [layers, setLayers] = useState<Set<LayerKey>>(new Set(DEFAULT_LAYERS))
 
-  const { genData } = useGenerationData(true)
+  const { genData } = useGenerationData()
 
   function toggleLayer(l: LayerKey) {
     setLayers(prev => {
