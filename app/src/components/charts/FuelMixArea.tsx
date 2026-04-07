@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { GenHistoryPoint } from '../../types'
 import { FUEL_COLORS } from '../../data/ba'
-import { parseEiaPeriod, makeTimeScale, axisConfig, drawTimeAxis, drawYAxis } from './chartUtils'
+import {
+  parseEiaPeriod, makeTimeScale, axisConfig, drawTimeAxis, drawYAxis,
+  fmtTooltipTime, fmtMW, TOOLTIP_STYLE, positionTooltip,
+} from './chartUtils'
 import { ChartLegend } from './ChartLegend'
 
 const W = 520, H = 210, M = { top: 12, right: 16, bottom: 26, left: 54 }
@@ -13,7 +16,9 @@ type FuelRow = { period: string } & { [fuel: string]: number | string }
 interface Props { data: GenHistoryPoint[] }
 
 export function FuelMixArea({ data }: Props) {
-  const svgRef = useRef<SVGSVGElement>(null)
+  const svgRef  = useRef<SVGSVGElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const tipRef  = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (data.length < 2) return
@@ -57,11 +62,67 @@ export function FuelMixArea({ data }: Props) {
         .attr('fill', FUEL_COLORS[s.key] ?? '#6b7280')
         .attr('opacity', 0.82).attr('d', area)
     }
+
+    // ── Hover ─────────────────────────────────────────────────────────────
+    const crosshair = g.append('line')
+      .attr('y1', 0).attr('y2', ih)
+      .attr('stroke', 'rgba(0,0,0,0.15)').attr('stroke-width', 1)
+      .style('opacity', 0).attr('pointer-events', 'none')
+
+    const bisect = d3.bisector<FuelRow, Date>(d => parseEiaPeriod(d.period as string)).left
+
+    g.append('rect').attr('width', iw).attr('height', ih)
+      .attr('fill', 'none').attr('pointer-events', 'all')
+      .on('mousemove', function (event: MouseEvent) {
+        const [mx] = d3.pointer(event)
+        const date = x.invert(mx)
+        let i = bisect(rows, date, 1)
+        if (i >= rows.length) i = rows.length - 1
+        if (i > 0) {
+          const d0 = parseEiaPeriod(rows[i - 1].period as string)
+          const d1 = parseEiaPeriod(rows[i].period as string)
+          if (date.getTime() - d0.getTime() < d1.getTime() - date.getTime()) i -= 1
+        }
+        const row = rows[i]
+        const px  = x(parseEiaPeriod(row.period as string))
+
+        crosshair.attr('x1', px).attr('x2', px).style('opacity', 1)
+
+        const fuelsWithMw = FUELS
+          .map(f => ({ fuel: f, mw: row[f] as number }))
+          .filter(f => f.mw > 0)
+          .sort((a, b) => b.mw - a.mw)
+
+        const totalMw = fuelsWithMw.reduce((s, f) => s + f.mw, 0)
+
+        const tip = tipRef.current!
+        tip.innerHTML = `
+          <div style="font-size:8.5px;color:rgba(0,0,0,0.38);letter-spacing:0.08em;margin-bottom:7px">
+            ${fmtTooltipTime(parseEiaPeriod(row.period as string))}
+          </div>
+          ${fuelsWithMw.map(({ fuel, mw }) => `
+            <div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:3px">
+              <span style="color:${FUEL_COLORS[fuel] ?? '#6b7280'}">${fuel}</span>
+              <span style="color:rgba(0,0,0,0.65);font-weight:500">${fmtMW(mw)}</span>
+            </div>`).join('')}
+          <div style="border-top:1px solid rgba(0,0,0,0.07);margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;gap:18px">
+            <span style="color:rgba(0,0,0,0.4)">total</span>
+            <span style="color:rgba(0,0,0,0.65);font-weight:500">${fmtMW(totalMw)}</span>
+          </div>
+        `
+        tip.style.opacity = '1'
+        positionTooltip(tip, wrapRef.current!, event.clientX, event.clientY)
+      })
+      .on('mouseleave', () => {
+        crosshair.style('opacity', 0)
+        if (tipRef.current) tipRef.current.style.opacity = '0'
+      })
   }, [data])
 
   return (
-    <div>
+    <div ref={wrapRef} style={{ position: 'relative' }}>
       <svg ref={svgRef} style={{ width: '100%', height: H }} viewBox={`0 0 ${W} ${H}`} />
+      <div ref={tipRef} style={TOOLTIP_STYLE} />
       <ChartLegend entries={FUELS.map(f => ({
         label:  f,
         color:  FUEL_COLORS[f] ?? '#6b7280',
