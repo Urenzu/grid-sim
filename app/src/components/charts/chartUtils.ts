@@ -12,22 +12,27 @@ export function makeTimeScale(periods: string[], width: number) {
     .range([0, width])
 }
 
-// Derive span from data, pick appropriate tick interval + format
+function fmt12(d: Date): string {
+  const h = d.getHours()
+  if (h === 0)  return 'midnight'
+  if (h === 12) return 'noon'
+  return h < 12 ? `${h} AM` : `${h - 12} PM`
+}
+
+const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 export function axisConfig(periods: string[]): {
   tickInterval: d3.TimeInterval
   format: (d: Date) => string
   dayLines: boolean
 } {
-  const dates   = periods.map(parseEiaPeriod)
-  const spanH   = (dates[dates.length - 1].getTime() - dates[0].getTime()) / 3_600_000
+  const dates = periods.map(parseEiaPeriod)
+  const spanH = (dates[dates.length - 1].getTime() - dates[0].getTime()) / 3_600_000
 
   if (spanH <= 26) {
     return {
       tickInterval: d3.timeHour.every(4)!,
-      format: d => {
-        const h = d.getHours()
-        return `${h.toString().padStart(2, '0')}:00`
-      },
+      format: d => fmt12(d),
       dayLines: false,
     }
   }
@@ -35,23 +40,20 @@ export function axisConfig(periods: string[]): {
     return {
       tickInterval: d3.timeHour.every(12)!,
       format: d => {
-        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-        return `${days[d.getDay()]} ${d.getHours().toString().padStart(2,'0')}h`
+        const h = d.getHours()
+        // At midnight show day name, otherwise just time
+        return h === 0 ? DAY[d.getDay()] : fmt12(d)
       },
       dayLines: true,
     }
   }
   return {
     tickInterval: d3.timeDay.every(1)!,
-    format: d => {
-      const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-      return days[d.getDay()]
-    },
+    format: d => `${DAY[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`,
     dayLines: true,
   }
 }
 
-// Draw a standard time x-axis + optional midnight gridlines onto a <g> selection
 export function drawTimeAxis(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   scale: d3.ScaleTime<number, number>,
@@ -59,21 +61,16 @@ export function drawTimeAxis(
   innerHeight: number,
   _innerWidth: number,
 ) {
-  // Midnight gridlines
   if (config.dayLines) {
     const midnights = scale.ticks(d3.timeDay.every(1)!)
     g.selectAll<SVGLineElement, Date>('line.midnight')
-      .data(midnights)
-      .join('line')
-      .attr('class', 'midnight')
+      .data(midnights).join('line').attr('class', 'midnight')
       .attr('x1', d => scale(d)).attr('x2', d => scale(d))
       .attr('y1', 0).attr('y2', innerHeight)
-      .attr('stroke', 'rgba(0,0,0,0.08)')
-      .attr('stroke-width', 1)
+      .attr('stroke', 'rgba(0,0,0,0.1)').attr('stroke-width', 1)
       .attr('stroke-dasharray', '3 3')
   }
 
-  // Axis
   g.call(
     d3.axisBottom(scale)
       .ticks(config.tickInterval)
@@ -84,11 +81,18 @@ export function drawTimeAxis(
     .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
       .attr('font-size', 8)
       .attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('fill', 'rgba(0,0,0,0.3)')
+      .attr('fill', d => {
+        // Bold the day-name ticks on the 48-72h range
+        const date = d as Date
+        return date.getHours?.() === 0 ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.3)'
+      })
+      .attr('font-weight', d => {
+        const date = d as Date
+        return date.getHours?.() === 0 ? '600' : '400'
+      })
     )
 }
 
-// Draw a standard left y-axis with horizontal gridlines
 export function drawYAxis(
   g: d3.Selection<SVGGElement, unknown, null, undefined>,
   scale: d3.ScaleLinear<number, number>,
@@ -97,19 +101,14 @@ export function drawYAxis(
   ticks = 4,
 ) {
   g.call(
-    d3.axisLeft(scale)
-      .ticks(ticks)
-      .tickSize(-innerWidth)
-      .tickFormat(format)
+    d3.axisLeft(scale).ticks(ticks).tickSize(-innerWidth).tickFormat(format)
   )
     .call(ax => ax.select('.domain').remove())
-    .call(ax => ax.selectAll('.tick line')
-      .attr('stroke', 'rgba(0,0,0,0.07)')
-      .attr('stroke-dasharray', null)
-    )
+    .call(ax => ax.selectAll('.tick line').attr('stroke', 'rgba(0,0,0,0.07)'))
     .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
       .attr('font-size', 8)
       .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('fill', 'rgba(0,0,0,0.35)')
     )
 }
+

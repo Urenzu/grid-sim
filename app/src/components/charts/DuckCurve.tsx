@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { DuckPoint } from '../../types'
 import { parseEiaPeriod, makeTimeScale, axisConfig, drawTimeAxis, drawYAxis } from './chartUtils'
+import { ChartLegend } from './ChartLegend'
 
-const W = 520, H = 220, M = { top: 12, right: 16, bottom: 36, left: 54 }
+const W = 520, H = 210, M = { top: 12, right: 16, bottom: 26, left: 54 }
 
 interface Props { data: DuckPoint[] }
 
@@ -26,10 +27,8 @@ export function DuckCurve({ data }: Props) {
 
     const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`)
 
-    drawYAxis(g, y, iw, d => `${(+d / 1000).toFixed(0)}GW`)
-
-    const xG = g.append('g').attr('transform', `translate(0,${ih})`)
-    drawTimeAxis(xG, x, cfg, -ih, iw)
+    drawYAxis(g, y, iw, d => `${(+d / 1000).toFixed(0)} GW`)
+    drawTimeAxis(g.append('g').attr('transform', `translate(0,${ih})`), x, cfg, -ih, iw)
 
     const line = (key: keyof DuckPoint) =>
       d3.line<DuckPoint>()
@@ -37,52 +36,41 @@ export function DuckCurve({ data }: Props) {
         .y(d => y(d[key] as number))
         .curve(d3.curveMonotoneX)
 
-    // Total load — dashed grey
+    // Solar fill area
+    g.append('path').datum(data)
+      .attr('fill', 'rgba(217,119,6,0.1)')
+      .attr('d', d3.area<DuckPoint>()
+        .x(d => x(parseEiaPeriod(d.period))).y0(ih).y1(d => y(d.solarMw))
+        .curve(d3.curveMonotoneX))
+
+    // Lines
     g.append('path').datum(data)
       .attr('fill', 'none').attr('stroke', 'rgba(0,0,0,0.18)')
       .attr('stroke-width', 1.5).attr('stroke-dasharray', '4 3')
       .attr('d', line('totalMw'))
 
-    // Net load — dark blue (the duck shape)
     g.append('path').datum(data)
       .attr('fill', 'none').attr('stroke', '#1d4ed8')
       .attr('stroke-width', 2).attr('d', line('netLoadMw'))
-
-    // Solar fill area
-    const solarArea = d3.area<DuckPoint>()
-      .x(d => x(parseEiaPeriod(d.period)))
-      .y0(ih).y1(d => y(d.solarMw))
-      .curve(d3.curveMonotoneX)
-    g.append('path').datum(data)
-      .attr('fill', 'rgba(217,119,6,0.12)').attr('d', solarArea)
 
     g.append('path').datum(data)
       .attr('fill', 'none').attr('stroke', '#d97706')
       .attr('stroke-width', 1.5).attr('d', line('solarMw'))
 
-    // Wind
     g.append('path').datum(data)
       .attr('fill', 'none').attr('stroke', '#0891b2')
       .attr('stroke-width', 1.5).attr('d', line('windMw'))
-
-    // Legend
-    const entries = [
-      { label: 'Total Load', color: 'rgba(0,0,0,0.4)', dash: '4 3' },
-      { label: 'Net Load',   color: '#1d4ed8',         dash: '' },
-      { label: 'Solar',      color: '#d97706',         dash: '' },
-      { label: 'Wind',       color: '#0891b2',         dash: '' },
-    ]
-    const lg = g.append('g').attr('transform', `translate(0,${ih + 22})`)
-    entries.forEach(({ label, color, dash }, i) => {
-      const gx = i * 118
-      lg.append('line').attr('x1', gx).attr('x2', gx + 16).attr('y1', 0).attr('y2', 0)
-        .attr('stroke', color).attr('stroke-width', 1.8)
-        .attr('stroke-dasharray', dash || null)
-      lg.append('text').attr('x', gx + 20).attr('y', 0).attr('dominant-baseline', 'middle')
-        .attr('font-size', 8).attr('font-family', 'IBM Plex Mono, monospace')
-        .attr('fill', 'rgba(0,0,0,0.4)').text(label)
-    })
   }, [data])
 
-  return <svg ref={svgRef} style={{ width: '100%', height: H, overflow: 'visible' }} viewBox={`0 0 ${W} ${H}`} />
+  return (
+    <div>
+      <svg ref={svgRef} style={{ width: '100%', height: H }} viewBox={`0 0 ${W} ${H}`} />
+      <ChartLegend entries={[
+        { label: 'Total Load', color: 'rgba(0,0,0,0.35)', dash: '4 3' },
+        { label: 'Net Load',   color: '#1d4ed8' },
+        { label: 'Solar',      color: '#d97706' },
+        { label: 'Wind',       color: '#0891b2' },
+      ]} />
+    </div>
+  )
 }
