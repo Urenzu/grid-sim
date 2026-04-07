@@ -13,12 +13,13 @@ function fmtMW(mw: number) {
 }
 
 interface Props {
-  baId:    string | null
-  data:    GridData | null
-  genData: BaGenData[] | null
+  baId:       string | null
+  selectedBA: string | null
+  data:       GridData | null
+  genData:    BaGenData[] | null
 }
 
-export function BAInfoPanel({ baId, data, genData }: Props) {
+export function BAInfoPanel({ baId, selectedBA: _selectedBA, data, genData }: Props) {
   const color  = baId ? (BA_COLORS[baId] ?? '#333333') : '#333333'
   const label  = baId ? (BA_LABEL_MAP[baId] ?? baId) : null
   const baGen  = baId ? (genData?.find(d => d.ba === baId) ?? null) : null
@@ -58,13 +59,13 @@ export function BAInfoPanel({ baId, data, genData }: Props) {
       <AnimatePresence mode="wait">
         {baId && (
           <motion.div
-            key={baId}
+            key="panel"
             initial={{ opacity: 0, scale: 0.96, y: 6 }}
             animate={{ opacity: 1, scale: 1,    y: 0 }}
             exit={{    opacity: 0, scale: 0.96, y: 6 }}
             transition={{ type: 'spring', stiffness: 380, damping: 30 }}
             className="glass"
-            style={{ padding: '16px 18px', overflow: 'hidden' }}
+            style={{ padding: '16px 18px', pointerEvents: 'all' }}
           >
             {/* ── Header ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
