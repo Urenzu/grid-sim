@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import type { BaGenData, BaCarbonData } from '../types'
+import type { BaGenData } from '../types'
 import { useHistoryData } from '../hooks/useHistoryData'
 import { BA_DEFS } from '../data/ba'
-import { DuckCurve }   from './charts/DuckCurve'
-import { FuelMixArea } from './charts/FuelMixArea'
-import { CarbonLine }  from './charts/CarbonLine'
-import { BaHourHeatmap } from './charts/BaHourHeatmap'
+import { DuckCurve }            from './charts/DuckCurve'
+import { FuelMixArea }          from './charts/FuelMixArea'
+import { CarbonLine }           from './charts/CarbonLine'
+import { RenewablePenetration } from './charts/RenewablePenetration'
 
 const BA_OPTIONS = BA_DEFS.map(([id, name]) => ({ id, name }))
 const HOUR_OPTIONS = [
@@ -17,10 +17,10 @@ const HOUR_OPTIONS = [
 
 interface Props {
   genData:    BaGenData[] | null    // reserved for future snapshot table
-  carbonData: BaCarbonData[] | null
+  carbonData: unknown               // reserved for future global view
 }
 
-export function Analytics({ genData: _genData, carbonData }: Props) {
+export function Analytics({ genData: _genData, carbonData: _carbonData }: Props) {
   const [ba,    setBa]    = useState('CISO')
   const [hours, setHours] = useState(48)
 
@@ -87,8 +87,8 @@ export function Analytics({ genData: _genData, carbonData }: Props) {
           {duck ? <CarbonLine data={duck} /> : <Placeholder />}
         </ChartCard>
 
-        <ChartCard title="BA Carbon Intensity Snapshot">
-          {carbonData ? <BaHourHeatmap carbonData={carbonData} /> : <Placeholder />}
+        <ChartCard title="Renewable Penetration — % of Generation">
+          {duck ? <RenewablePenetration data={duck} /> : <Placeholder />}
         </ChartCard>
       </div>
     </div>
