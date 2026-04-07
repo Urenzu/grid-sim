@@ -22,5 +22,30 @@ export interface BaGenData {
   fuels:        Array<{ fuel: string; mw: number }>
 }
 
-export type Mode     = 'flow' | 'generation'
+export interface BaCarbonData {
+  ba:        string
+  intensity: number
+  totalMw:   number
+}
+
+export interface GenHistoryPoint {
+  period:  string
+  fuels:   Array<{ fuel: string; mw: number }>
+  totalMw: number
+}
+
+export interface DuckPoint {
+  period:     string
+  totalMw:    number
+  solarMw:    number
+  windMw:     number
+  netLoadMw:  number
+  nuclearMw:  number
+  gasMw:      number
+  coalMw:     number
+  hydroMw:    number
+  intensity:  number
+}
+
+export type Mode     = 'flow' | 'generation' | 'carbon'
 export type LayerKey = 'arcs' | 'particles' | 'nuclear' | 'hydro' | 'wind' | 'solar' | 'gas' | 'coal'

@@ -4,6 +4,7 @@ import type { Mode, LayerKey } from '../types'
 const MODES: { id: Mode; label: string }[] = [
   { id: 'flow',       label: 'Flow'       },
   { id: 'generation', label: 'Generation' },
+  { id: 'carbon',     label: 'Carbon'     },
 ]
 
 const FLOW_LAYERS: { id: LayerKey; label: string }[] = [

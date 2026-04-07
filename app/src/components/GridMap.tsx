@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import * as topojson from 'topojson-client'
-import type { GridData, BaGenData, Mode, LayerKey } from '../types'
+import type { GridData, BaGenData, BaCarbonData, Mode, LayerKey } from '../types'
 import { FUEL_COLORS, BA_COLORS, BA_DEFS } from '../data/ba'
 import { NUCLEAR_PLANTS, HYDRO_PLANTS, WIND_FARMS, SOLAR_FARMS, GAS_PLANTS, COAL_PLANTS, EXTRA_SEEDS } from '../data/plants'
 
@@ -28,6 +28,9 @@ function bezierPt(t: number, p0: [number, number], cp: [number, number], p1: [nu
 interface Arc { src: [number, number]; cp: [number, number]; tgt: [number, number]; norm: number; fwd: boolean; srcId: string; tgtId: string }
 interface Particle { src: [number, number]; cp: [number, number]; tgt: [number, number]; t: number; speed: number; norm: number; fwd: boolean; srcId: string; tgtId: string }
 
+// Carbon intensity color scale: green (clean) → red (dirty), domain [0, 800] g CO2/kWh
+const carbonColor = d3.scaleSequential(d3.interpolateRdYlGn).domain([800, 0])
+
 interface Props {
   data: GridData | null
   hoveredBA: string | null
@@ -35,9 +38,10 @@ interface Props {
   mode: Mode
   layers: Set<LayerKey>
   genData: BaGenData[] | null
+  carbonData: BaCarbonData[] | null
 }
 
-export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: Props) {
+export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData, carbonData }: Props) {
   const svgRef    = useRef<SVGSVGElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const dataRef   = useRef<typeof data>(null)  // always-current data for post-load arc build
@@ -58,6 +62,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     layerGas:       true,
     layerCoal:      true,
     genMap:         new Map<string, BaGenData>(),
+    carbonMap:      new Map<string, number>(),
   })
 
   useEffect(() => {
@@ -250,7 +255,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     function frame() {
       const { transform: T, arcData, particles, plantPts, mode: m,
               layerArcs, layerParticles, layerNuclear, layerHydro, layerWind, layerSolar,
-              layerGas, layerCoal, genMap, pos } = S.current
+              layerGas, layerCoal, genMap, carbonMap, pos } = S.current
       ctx.setTransform(T.k, 0, 0, T.k, T.x, T.y)
       ctx.clearRect(-T.x / T.k, -T.y / T.k, W / T.k, H / T.k)
 
@@ -364,6 +369,33 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
           ctx.strokeStyle = 'rgba(107,114,128,0.25)'
           ctx.lineWidth   = 0.8 / T.k
           ctx.stroke()
+        }
+      }
+
+      // ── Carbon mode — intensity dots ─────────────────────────────────────
+      if (m === 'carbon' && carbonMap.size > 0) {
+        for (const [baId, intensity] of carbonMap) {
+          const p = pos.get(baId)
+          if (!p) continue
+          const color = carbonColor(intensity)
+          // Parse rgb string from d3 color
+          const c = d3.color(color)!.rgb()
+          const r = 14 / T.k
+          const grd = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], r * 2.5)
+          grd.addColorStop(0, `rgba(${c.r},${c.g},${c.b},0.55)`)
+          grd.addColorStop(1, `rgba(${c.r},${c.g},${c.b},0)`)
+          ctx.beginPath(); ctx.arc(p[0], p[1], r * 2.5, 0, Math.PI * 2)
+          ctx.fillStyle = grd; ctx.fill()
+          ctx.beginPath(); ctx.arc(p[0], p[1], r, 0, Math.PI * 2)
+          ctx.fillStyle = `rgba(${c.r},${c.g},${c.b},0.88)`
+          ctx.shadowColor = `rgba(${c.r},${c.g},${c.b},0.5)`
+          ctx.shadowBlur = r * 4
+          ctx.fill(); ctx.shadowBlur = 0
+          // Intensity label
+          ctx.fillStyle = 'rgba(255,255,255,0.9)'
+          ctx.font = `bold ${Math.round(5 / T.k)}px IBM Plex Mono, monospace`
+          ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+          ctx.fillText(Math.round(intensity).toString(), p[0], p[1])
         }
       }
 
@@ -593,10 +625,66 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData }: P
     S.current.genMap = m
   }, [genData])
 
+  useEffect(() => {
+    const m = new Map<string, number>()
+    if (carbonData) carbonData.forEach(d => m.set(d.ba, d.intensity))
+    S.current.carbonMap = m
+  }, [carbonData])
+
+  // Update Voronoi fill colors when mode or carbon data changes
+  useEffect(() => {
+    const svg = d3.select(svgRef.current!)
+    svg.selectAll<SVGPathElement, any>('.ba-fill')
+      .attr('fill', function () {
+        const baId = d3.select(this).attr('data-ba')
+        if (mode === 'carbon' && carbonData) {
+          const entry = carbonData.find(d => d.ba === baId)
+          if (entry) {
+            const c = d3.color(carbonColor(entry.intensity))!.rgb()
+            return `rgba(${c.r},${c.g},${c.b},0.28)`
+          }
+        }
+        const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333')
+        return `rgba(${r},${g},${b},${baId === hoveredBA ? 0.22 : 0.1})`
+      })
+  }, [mode, carbonData]) // eslint-disable-line
+
   return (
     <div style={{ position: 'absolute', inset: 0 }}>
       <svg    ref={svgRef}    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
       <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
+
+      {/* Carbon legend */}
+      {mode === 'carbon' && (
+        <div style={{
+          position: 'fixed', bottom: 120, right: 20, zIndex: 20,
+          background: 'rgba(255,255,255,0.88)',
+          backdropFilter: 'blur(14px)',
+          WebkitBackdropFilter: 'blur(14px)',
+          border: '1px solid rgba(0,0,0,0.08)',
+          borderRadius: 10, padding: '10px 14px',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+          minWidth: 140,
+        }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 8, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(0,0,0,0.4)', marginBottom: 8 }}>
+            Carbon Intensity
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 100, height: 10, borderRadius: 5,
+              background: 'linear-gradient(to right, #1a9641, #ffffbf, #d7191c)',
+            }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 7, color: 'rgba(0,0,0,0.35)', marginTop: 4 }}>
+            <span>Clean</span>
+            <span>Dirty</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'var(--font-mono)', fontSize: 7, color: 'rgba(0,0,0,0.25)', marginTop: 2 }}>
+            <span>0</span>
+            <span>800 g/kWh</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

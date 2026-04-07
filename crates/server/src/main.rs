@@ -1,5 +1,6 @@
 use anyhow::Result;
-use axum::{extract::State, http::StatusCode, response::Json, routing::get, Router};
+use axum::{extract::{Query, State}, http::StatusCode, response::Json, routing::get, Router};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -25,13 +26,19 @@ where
 
 #[derive(Clone)]
 struct AppState {
-    eia_key:   String,
-    http:      reqwest::Client,
-    gen_cache: Arc<RwLock<Option<CachedGen>>>,
+    eia_key:       String,
+    http:          reqwest::Client,
+    gen_cache:     Arc<RwLock<Option<CachedGen>>>,
+    history_cache: Arc<RwLock<HashMap<String, CachedHistory>>>,
 }
 
 struct CachedGen {
     data:       Vec<BaGenData>,
+    fetched_at: Instant,
+}
+
+struct CachedHistory {
+    data:       serde_json::Value,
     fetched_at: Instant,
 }
 
@@ -77,10 +84,51 @@ pub struct BaGenData {
     fuels:          Vec<FuelEntry>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct FuelEntry {
     fuel: String,
     mw:   f64,
+}
+
+// ── Carbon output ─────────────────────────────────────────────────────────
+#[derive(Serialize, Clone)]
+pub struct BaCarbonData {
+    ba:        String,
+    intensity: f64,
+    #[serde(rename = "totalMw")]
+    total_mw:  f64,
+}
+
+// ── History output ────────────────────────────────────────────────────────
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GenHistoryPoint {
+    period:  String,
+    fuels:   Vec<FuelEntry>,
+    #[serde(rename = "totalMw")]
+    total_mw: f64,
+}
+
+// ── Duck curve output ─────────────────────────────────────────────────────
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DuckPoint {
+    period:    String,
+    #[serde(rename = "totalMw")]
+    total_mw:  f64,
+    #[serde(rename = "solarMw")]
+    solar_mw:  f64,
+    #[serde(rename = "windMw")]
+    wind_mw:   f64,
+    #[serde(rename = "netLoadMw")]
+    net_load_mw: f64,
+    #[serde(rename = "nuclearMw")]
+    nuclear_mw: f64,
+    #[serde(rename = "gasMw")]
+    gas_mw:    f64,
+    #[serde(rename = "coalMw")]
+    coal_mw:   f64,
+    #[serde(rename = "hydroMw")]
+    hydro_mw:  f64,
+    intensity: f64,
 }
 
 #[derive(Deserialize)]
@@ -116,9 +164,14 @@ pub struct Link {
     value: f64,
 }
 
+// ── Query params ──────────────────────────────────────────────────────────
+#[derive(Deserialize)]
+struct HistoryParams {
+    ba:    String,
+    hours: Option<u32>,
+}
+
 // All known balancing authorities — used as a label lookup only.
-// The interchange/generation queries no longer filter by this list;
-// instead we return whatever BA pairs the EIA API actually reports.
 const BA_LABELS: &[(&str, &str)] = &[
     // Western Interconnection
     ("CISO", "California ISO"),
@@ -207,6 +260,26 @@ fn normalize_fuel(code: &str) -> &'static str {
     }
 }
 
+fn emission_factor(fuel: &str) -> f64 {
+    match fuel {
+        "coal"    => 1001.0,
+        "gas"     => 443.0,
+        "nuclear" | "wind" | "solar" | "hydro" => 0.0,
+        _         => 500.0,
+    }
+}
+
+fn carbon_intensity(fuels: &[FuelEntry]) -> f64 {
+    let total: f64 = fuels.iter().map(|f| f.mw).sum();
+    if total <= 0.0 { return 0.0; }
+    fuels.iter().map(|f| f.mw * emission_factor(&f.fuel)).sum::<f64>() / total
+}
+
+fn eia_period(hours_ago: u32) -> String {
+    let dt = Utc::now() - chrono::Duration::hours(hours_ago as i64);
+    dt.format("%Y-%m-%dT%H").to_string()
+}
+
 async fn fetch_generation(state: &AppState) -> Result<Vec<BaGenData>> {
     // Return cached data if fresh (< 5 minutes old)
     {
@@ -218,8 +291,6 @@ async fn fetch_generation(state: &AppState) -> Result<Vec<BaGenData>> {
         }
     }
 
-    // No respondent facet — fetch all reporting BAs in one shot.
-    // ~66 BAs × 6 fuel types = ~400 records/period; length=4000 covers ≥10 periods.
     let url = format!(
         "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data/\
          ?api_key={}\
@@ -275,6 +346,32 @@ async fn fetch_generation(state: &AppState) -> Result<Vec<BaGenData>> {
     Ok(result)
 }
 
+async fn fetch_history(state: &AppState, ba: &str, hours: u32) -> Result<Vec<FuelTypeRecord>> {
+    let start = eia_period(hours);
+    let end   = eia_period(0);
+
+    let url = format!(
+        "https://api.eia.gov/v2/electricity/rto/fuel-type-data/data/\
+         ?api_key={}\
+         &frequency=hourly\
+         &data[]=value\
+         &facets[respondent][]={}\
+         &start={}\
+         &end={}\
+         &sort[0][column]=period\
+         &sort[0][direction]=asc\
+         &length={}",
+        state.eia_key,
+        ba,
+        start,
+        end,
+        hours * 10, // up to 10 fuel types per hour
+    );
+
+    let resp: EiaFuelResponse = state.http.get(&url).send().await?.json().await?;
+    Ok(resp.response.data)
+}
+
 async fn generation_handler(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<BaGenData>>, StatusCode> {
@@ -287,13 +384,143 @@ async fn generation_handler(
         })
 }
 
+async fn carbon_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<BaCarbonData>>, StatusCode> {
+    let gen = fetch_generation(&state).await.map_err(|e| {
+        tracing::error!("EIA generation fetch failed: {e:#}");
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    let result: Vec<BaCarbonData> = gen.iter().map(|ba| {
+        BaCarbonData {
+            ba:        ba.ba.clone(),
+            intensity: carbon_intensity(&ba.fuels),
+            total_mw:  ba.total_mw,
+        }
+    }).collect();
+
+    Ok(Json(result))
+}
+
+async fn history_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HistoryParams>,
+) -> Result<Json<Vec<GenHistoryPoint>>, StatusCode> {
+    let hours = params.hours.unwrap_or(48).min(168); // cap at 1 week
+    let cache_key = format!("{}:{}", params.ba, hours);
+
+    // Check cache
+    {
+        let cache = state.history_cache.read().await;
+        if let Some(c) = cache.get(&cache_key) {
+            if c.fetched_at.elapsed() < Duration::from_secs(5 * 60) {
+                if let Ok(data) = serde_json::from_value::<Vec<GenHistoryPoint>>(c.data.clone()) {
+                    return Ok(Json(data));
+                }
+            }
+        }
+    }
+
+    let records = fetch_history(&state, &params.ba, hours).await.map_err(|e| {
+        tracing::error!("EIA history fetch failed for {}: {e:#}", params.ba);
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    // Group by period → fuel → mw
+    let mut period_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    for r in &records {
+        if let Some(mw) = r.value {
+            if mw <= 0.0 { continue; }
+            let fuel = normalize_fuel(&r.fueltype).to_string();
+            *period_map.entry(r.period.clone()).or_default()
+                .entry(fuel).or_insert(0.0) += mw;
+        }
+    }
+
+    let mut result: Vec<GenHistoryPoint> = period_map.into_iter().map(|(period, fuel_map)| {
+        let total_mw: f64 = fuel_map.values().sum();
+        let mut fuels: Vec<FuelEntry> = fuel_map.into_iter()
+            .map(|(fuel, mw)| FuelEntry { fuel, mw })
+            .collect();
+        fuels.sort_by(|a, b| b.mw.partial_cmp(&a.mw).unwrap_or(std::cmp::Ordering::Equal));
+        GenHistoryPoint { period, fuels, total_mw }
+    }).collect();
+    result.sort_by(|a, b| a.period.cmp(&b.period));
+
+    // Store in cache
+    if let Ok(v) = serde_json::to_value(&result) {
+        let mut cache = state.history_cache.write().await;
+        cache.insert(cache_key, CachedHistory { data: v, fetched_at: Instant::now() });
+    }
+
+    Ok(Json(result))
+}
+
+async fn duck_curve_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HistoryParams>,
+) -> Result<Json<Vec<DuckPoint>>, StatusCode> {
+    let hours = params.hours.unwrap_or(48).min(168);
+    let cache_key = format!("duck:{}:{}", params.ba, hours);
+
+    // Check cache
+    {
+        let cache = state.history_cache.read().await;
+        if let Some(c) = cache.get(&cache_key) {
+            if c.fetched_at.elapsed() < Duration::from_secs(5 * 60) {
+                if let Ok(data) = serde_json::from_value::<Vec<DuckPoint>>(c.data.clone()) {
+                    return Ok(Json(data));
+                }
+            }
+        }
+    }
+
+    let records = fetch_history(&state, &params.ba, hours).await.map_err(|e| {
+        tracing::error!("EIA duck-curve fetch failed for {}: {e:#}", params.ba);
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    // Group by period
+    let mut period_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+    for r in &records {
+        if let Some(mw) = r.value {
+            if mw <= 0.0 { continue; }
+            let fuel = normalize_fuel(&r.fueltype).to_string();
+            *period_map.entry(r.period.clone()).or_default()
+                .entry(fuel).or_insert(0.0) += mw;
+        }
+    }
+
+    let mut result: Vec<DuckPoint> = period_map.into_iter().map(|(period, fuel_map)| {
+        let solar_mw  = *fuel_map.get("solar").unwrap_or(&0.0);
+        let wind_mw   = *fuel_map.get("wind").unwrap_or(&0.0);
+        let nuclear_mw = *fuel_map.get("nuclear").unwrap_or(&0.0);
+        let gas_mw    = *fuel_map.get("gas").unwrap_or(&0.0);
+        let coal_mw   = *fuel_map.get("coal").unwrap_or(&0.0);
+        let hydro_mw  = *fuel_map.get("hydro").unwrap_or(&0.0);
+        let total_mw: f64 = fuel_map.values().sum();
+        let net_load_mw = (total_mw - solar_mw - wind_mw).max(0.0);
+
+        let fuels: Vec<FuelEntry> = fuel_map.iter()
+            .map(|(fuel, &mw)| FuelEntry { fuel: fuel.clone(), mw })
+            .collect();
+        let intensity = carbon_intensity(&fuels);
+
+        DuckPoint { period, total_mw, solar_mw, wind_mw, net_load_mw, nuclear_mw, gas_mw, coal_mw, hydro_mw, intensity }
+    }).collect();
+    result.sort_by(|a, b| a.period.cmp(&b.period));
+
+    // Store in cache
+    if let Ok(v) = serde_json::to_value(&result) {
+        let mut cache = state.history_cache.write().await;
+        cache.insert(cache_key, CachedHistory { data: v, fetched_at: Instant::now() });
+    }
+
+    Ok(Json(result))
+}
+
 async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
-    // No fromba/toba facets — query all BA pairs the EIA reports, then build
-    // nodes/links from whatever comes back.  The frontend skips any BA it has
-    // no screen position for, so adding new BAs here is zero-config.
-    //
-    // ~400-600 active directed pairs × ~3 trailing periods ≈ 1500-2000 records;
-    // length=5000 gives headroom without hitting the API hard.
     let url = format!(
         "https://api.eia.gov/v2/electricity/rto/interchange-data/data/\
          ?api_key={}\
@@ -308,12 +535,8 @@ async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
     let resp: EiaResponse = state.http.get(&url).send().await?.json().await?;
     let records = resp.response.data;
 
-    // Label lookup — unknown BAs fall back to their ID string
     let ba_label: HashMap<&str, &str> = BA_LABELS.iter().cloned().collect();
 
-    // For each directed pair (from, to), keep only the most recent record.
-    // Different BAs report with different lags — picking a single global period
-    // silently drops every BA that hasn't caught up to the fastest reporter.
     let mut pair_latest: HashMap<(String, String), (String, f64)> = HashMap::new();
     for r in &records {
         let value = match r.value { Some(v) if v != 0.0 => v, _ => continue };
@@ -322,7 +545,6 @@ async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
         if is_newer { pair_latest.insert(key, (r.period.clone(), value)); }
     }
 
-    // Build node list from every BA that appears in the data
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     for (from, to) in pair_latest.keys() {
         seen.insert(from.clone());
@@ -334,7 +556,6 @@ async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
     }).collect();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    // Net flow per canonical ordered pair (A < B lexicographically)
     let mut net: HashMap<(String, String), f64> = HashMap::new();
     for ((from, to), (_, value)) in &pair_latest {
         let (a, b, sign) = if from < to {
@@ -345,7 +566,6 @@ async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
         *net.entry((a, b)).or_insert(0.0) += value * sign;
     }
 
-    // Report the most recent period we actually used (best-available across all pairs)
     let period = pair_latest.values()
         .map(|(p, _)| p.as_str())
         .max()
@@ -391,14 +611,18 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState {
         eia_key,
-        http:      reqwest::Client::new(),
-        gen_cache: Arc::new(RwLock::new(None)),
+        http:          reqwest::Client::new(),
+        gen_cache:     Arc::new(RwLock::new(None)),
+        history_cache: Arc::new(RwLock::new(HashMap::new())),
     });
 
     let app = Router::new()
         .route("/health",          get(health_handler))
         .route("/api/interchange", get(interchange_handler))
         .route("/api/generation",  get(generation_handler))
+        .route("/api/carbon",      get(carbon_handler))
+        .route("/api/history",     get(history_handler))
+        .route("/api/duck-curve",  get(duck_curve_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
