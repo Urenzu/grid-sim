@@ -549,9 +549,22 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData, car
       .each(function () {
         const baId      = d3.select(this).attr('data-ba')
         const isHovered = baId === hoveredBA
-        const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333333')
-        d3.select(this).transition().duration(200)
-          .attr('fill', isHovered ? `rgba(${r},${g},${b},0.22)` : `rgba(${r},${g},${b},0.1)`)
+        let fill: string
+        if (mode === 'carbon' && carbonData) {
+          const entry = carbonData.find(d => d.ba === baId)
+          if (entry) {
+            const c = d3.color(carbonColor(entry.intensity))!.rgb()
+            fill = isHovered
+              ? `rgba(${c.r},${c.g},${c.b},0.50)`
+              : `rgba(${c.r},${c.g},${c.b},0.28)`
+          } else {
+            fill = isHovered ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.03)'
+          }
+        } else {
+          const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333333')
+          fill = isHovered ? `rgba(${r},${g},${b},0.22)` : `rgba(${r},${g},${b},0.1)`
+        }
+        d3.select(this).transition().duration(200).attr('fill', fill)
       })
 
     svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-ring')
@@ -589,7 +602,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData, car
         const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
         return `rgba(${r},${g},${b},0.7)`
       })
-  }, [hoveredBA])
+  }, [hoveredBA, mode, carbonData]) // eslint-disable-line
 
   // ── Rebuild arcs on new data ──────────────────────────────────────────
   useEffect(() => {
@@ -657,7 +670,7 @@ export function GridMap({ data, hoveredBA, onBAHover, mode, layers, genData, car
       {/* Carbon legend */}
       {mode === 'carbon' && (
         <div style={{
-          position: 'fixed', bottom: 120, right: 20, zIndex: 20,
+          position: 'fixed', bottom: 120, left: 20, zIndex: 20,
           background: 'rgba(255,255,255,0.88)',
           backdropFilter: 'blur(14px)',
           WebkitBackdropFilter: 'blur(14px)',
