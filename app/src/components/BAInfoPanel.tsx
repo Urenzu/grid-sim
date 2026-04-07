@@ -13,13 +13,14 @@ function fmtMW(mw: number) {
 }
 
 interface Props {
-  baId:       string | null
-  selectedBA: string | null
-  data:       GridData | null
-  genData:    BaGenData[] | null
+  baId:            string | null
+  selectedBA:      string | null
+  data:            GridData | null
+  genData:         BaGenData[] | null
+  onViewAnalytics: (id: string) => void
 }
 
-export function BAInfoPanel({ baId, selectedBA: _selectedBA, data, genData }: Props) {
+export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }: Props) {
   const color  = baId ? (BA_COLORS[baId] ?? '#333333') : '#333333'
   const label  = baId ? (BA_LABEL_MAP[baId] ?? baId) : null
   const baGen  = baId ? (genData?.find(d => d.ba === baId) ?? null) : null
@@ -162,6 +163,40 @@ export function BAInfoPanel({ baId, selectedBA: _selectedBA, data, genData }: Pr
                     )
                   })}
                 </div>
+              </>
+            )}
+
+            {/* ── Analytics CTA — only when this BA is locked (selected) ── */}
+            {selectedBA === baId && (
+              <>
+                <Divider top={14} bottom={12} />
+                <button
+                  onClick={() => onViewAnalytics(baId!)}
+                  style={{
+                    width: '100%',
+                    background: 'rgba(0,102,204,0.06)',
+                    border: '1px solid rgba(0,102,204,0.15)',
+                    borderRadius: 7,
+                    padding: '8px 0',
+                    fontFamily: 'var(--font-mono)',
+                    fontSize: 9,
+                    letterSpacing: '0.18em',
+                    textTransform: 'uppercase',
+                    color: '#0066cc',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s ease, border-color 0.15s ease',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,102,204,0.11)'
+                    ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,102,204,0.28)'
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,102,204,0.06)'
+                    ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,102,204,0.15)'
+                  }}
+                >
+                  view analytics →
+                </button>
               </>
             )}
           </motion.div>

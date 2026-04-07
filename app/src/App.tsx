@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { GridMap }           from './components/GridMap'
 import { HUD }               from './components/HUD'
 import { BAInfoPanel }       from './components/BAInfoPanel'
@@ -16,15 +17,25 @@ export default function App() {
   const [mode,   setMode]   = useState<Mode>('flow')
   const [layers, setLayers] = useState<Set<LayerKey>>(new Set(DEFAULT_LAYERS))
   const [view,   setView]   = useState<'map' | 'analytics'>('map')
+  const [analyticsBA, setAnalyticsBA] = useState('CISO')
 
   const { genData }    = useGenerationData()
   const { carbonData } = useCarbonData()
 
-  // Hover takes precedence over selection for display; on mouseout reverts to selected
   const displayedBA = hoveredBA ?? selectedBA
 
   function handleBASelect(id: string | null) {
     setSelectedBA(prev => prev === id ? null : id)
+  }
+
+  function navigateToAnalytics(baId: string) {
+    setAnalyticsBA(baId)
+    setView('analytics')
+  }
+
+  function handleViewToggle(v: 'map' | 'analytics') {
+    if (v === 'analytics' && selectedBA) setAnalyticsBA(selectedBA)
+    setView(v)
   }
 
   function toggleLayer(l: LayerKey) {
@@ -49,7 +60,7 @@ export default function App() {
         boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       }}>
         {(['map', 'analytics'] as const).map(v => (
-          <button key={v} onClick={() => setView(v)} style={{
+          <button key={v} onClick={() => handleViewToggle(v)} style={{
             background: view === v ? 'rgba(0,102,204,0.08)' : 'transparent',
             border: view === v ? '1px solid rgba(0,102,204,0.2)' : '1px solid transparent',
             borderRadius: 999,
@@ -67,20 +78,38 @@ export default function App() {
         ))}
       </div>
 
-      {view === 'map' ? (
-        <>
-          <GridMap
-            data={data} hoveredBA={hoveredBA} onBAHover={setHoveredBA}
-            selectedBA={selectedBA} onBASelect={handleBASelect}
-            mode={mode} layers={layers} genData={genData} carbonData={carbonData}
-          />
-          <HUD data={data} error={error} loading={loading} />
-          <BAInfoPanel baId={displayedBA} selectedBA={selectedBA} data={data} genData={genData} />
-          <ModeBar mode={mode} layers={layers} onMode={setMode} onLayerToggle={toggleLayer} />
-        </>
-      ) : (
-        <Analytics genData={genData} carbonData={carbonData} />
-      )}
+      <AnimatePresence mode="wait">
+        {view === 'map' ? (
+          <motion.div key="map"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ position: 'fixed', inset: 0 }}
+          >
+            <GridMap
+              data={data} hoveredBA={hoveredBA} onBAHover={setHoveredBA}
+              selectedBA={selectedBA} onBASelect={handleBASelect}
+              mode={mode} layers={layers} genData={genData} carbonData={carbonData}
+            />
+            <HUD data={data} error={error} loading={loading} />
+            <BAInfoPanel
+              baId={displayedBA} selectedBA={selectedBA} data={data} genData={genData}
+              onViewAnalytics={navigateToAnalytics}
+            />
+            <ModeBar mode={mode} layers={layers} onMode={setMode} onLayerToggle={toggleLayer} />
+          </motion.div>
+        ) : (
+          <motion.div key="analytics"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ position: 'fixed', inset: 0 }}
+          >
+            <Analytics
+              genData={genData} carbonData={carbonData}
+              ba={analyticsBA} onBaChange={setAnalyticsBA}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   )
 }
