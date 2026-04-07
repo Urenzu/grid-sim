@@ -11,13 +11,21 @@ import type { Mode, LayerKey } from './types'
 
 export default function App() {
   const { data, error, loading } = useGridData()
-  const [hoveredBA, setHoveredBA] = useState<string | null>(null)
+  const [hoveredBA,  setHoveredBA]  = useState<string | null>(null)
+  const [selectedBA, setSelectedBA] = useState<string | null>(null)
   const [mode,   setMode]   = useState<Mode>('flow')
   const [layers, setLayers] = useState<Set<LayerKey>>(new Set(DEFAULT_LAYERS))
   const [view,   setView]   = useState<'map' | 'analytics'>('map')
 
   const { genData }    = useGenerationData()
   const { carbonData } = useCarbonData()
+
+  // Hover takes precedence over selection for display; on mouseout reverts to selected
+  const displayedBA = hoveredBA ?? selectedBA
+
+  function handleBASelect(id: string | null) {
+    setSelectedBA(prev => prev === id ? null : id)
+  }
 
   function toggleLayer(l: LayerKey) {
     setLayers(prev => {
@@ -63,10 +71,11 @@ export default function App() {
         <>
           <GridMap
             data={data} hoveredBA={hoveredBA} onBAHover={setHoveredBA}
+            selectedBA={selectedBA} onBASelect={handleBASelect}
             mode={mode} layers={layers} genData={genData} carbonData={carbonData}
           />
           <HUD data={data} error={error} loading={loading} />
-          <BAInfoPanel baId={hoveredBA} data={data} genData={genData} />
+          <BAInfoPanel baId={displayedBA} selectedBA={selectedBA} data={data} genData={genData} />
           <ModeBar mode={mode} layers={layers} onMode={setMode} onLayerToggle={toggleLayer} />
         </>
       ) : (
