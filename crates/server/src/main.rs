@@ -27,11 +27,12 @@ where
 
 #[derive(Clone)]
 struct AppState {
-    eia_key:       String,
-    http:          reqwest::Client,
-    gen_cache:     Arc<RwLock<Option<CachedGen>>>,
+    eia_key:           String,
+    http:              reqwest::Client,
+    gen_cache:         Arc<RwLock<Option<CachedGen>>>,
+    interchange_cache: Arc<RwLock<Option<CachedInterchange>>>,
     /// Keyed by "ba:hours" or "duck:ba:hours". TTL + eviction managed by moka.
-    history_cache: Cache<String, Arc<serde_json::Value>>,
+    history_cache:     Cache<String, Arc<serde_json::Value>>,
 }
 
 struct CachedGen {
@@ -39,7 +40,10 @@ struct CachedGen {
     fetched_at: Instant,
 }
 
-// history_cache TTL and eviction are managed by moka — no manual CachedHistory needed
+struct CachedInterchange {
+    data:       GraphData,
+    fetched_at: Instant,
+}
 
 // ── EIA interchange response ──────────────────────────────────────────────
 #[derive(Deserialize)]
@@ -142,20 +146,20 @@ struct EiaRecord {
 }
 
 // What we send to the frontend
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct GraphData {
     nodes: Vec<Node>,
     links: Vec<Link>,
     period: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Node {
     id: String,
     label: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Link {
     source: String,
     target: String,
@@ -490,6 +494,15 @@ async fn duck_curve_handler(
 }
 
 async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
+    {
+        let cache = state.interchange_cache.read().await;
+        if let Some(c) = &*cache {
+            if c.fetched_at.elapsed() < Duration::from_secs(5 * 60) {
+                return Ok(c.data.clone());
+            }
+        }
+    }
+
     let url = format!(
         "https://api.eia.gov/v2/electricity/rto/interchange-data/data/\
          ?api_key={}\
@@ -552,7 +565,10 @@ async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
         })
         .collect();
 
-    Ok(GraphData { nodes, links, period })
+    let result = GraphData { nodes, links, period };
+    let mut cache = state.interchange_cache.write().await;
+    *cache = Some(CachedInterchange { data: result.clone(), fetched_at: Instant::now() });
+    Ok(result)
 }
 
 async fn interchange_handler(
@@ -585,13 +601,14 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState {
         eia_key,
-        http:          reqwest::Client::new(),
-        gen_cache:     Arc::new(RwLock::new(None)),
+        http:              reqwest::Client::new(),
+        gen_cache:         Arc::new(RwLock::new(None)),
+        interchange_cache: Arc::new(RwLock::new(None)),
         history_cache,
     });
 
-    // Background gen refresh — warms cache on startup, then every 4.5 minutes.
-    // Users always get instant responses; no one ever hits a cold gen_cache.
+    // Background refresh — warms both caches on startup, then every 4.5 minutes.
+    // Users always get instant responses; no one hits a cold gen or interchange cache.
     tokio::spawn({
         let state = Arc::clone(&state);
         async move {
@@ -600,6 +617,9 @@ async fn main() -> Result<()> {
                 interval.tick().await;
                 if let Err(e) = fetch_generation(&state).await {
                     tracing::warn!("background gen refresh failed: {e:#}");
+                }
+                if let Err(e) = fetch_interchange(&state).await {
+                    tracing::warn!("background interchange refresh failed: {e:#}");
                 }
             }
         }

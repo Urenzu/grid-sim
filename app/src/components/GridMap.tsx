@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useCallback } from 'react'
 import * as d3 from 'd3'
 import * as topojson from 'topojson-client'
 import type { GridData, BaGenData, BaCarbonData, Mode, LayerKey } from '../types'
@@ -33,7 +33,6 @@ const carbonColor = d3.scaleSequential(d3.interpolateRdYlGn).domain([800, 0])
 
 interface Props {
   data: GridData | null
-  hoveredBA: string | null
   onBAHover: (id: string | null) => void
   selectedBA: string | null
   onBASelect: (id: string | null) => void
@@ -43,10 +42,16 @@ interface Props {
   carbonData: BaCarbonData[] | null
 }
 
-export function GridMap({ data, hoveredBA, onBAHover, selectedBA, onBASelect, mode, layers, genData, carbonData }: Props) {
+export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers, genData, carbonData }: Props) {
   const svgRef    = useRef<SVGSVGElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const dataRef   = useRef<typeof data>(null)  // always-current data for post-load arc build
+  const dataRef   = useRef<typeof data>(null)
+
+  // Refs for D3-owned hover state — no React in the mousemove hot path
+  const hoveredBARef  = useRef<string | null>(null)
+  const selectedBARef = useRef<string | null>(selectedBA)
+  const modeRef       = useRef<Mode>(mode)
+  const carbonDataRef = useRef(carbonData)
   const S = useRef({
     transform:      d3.zoomIdentity as d3.ZoomTransform,
     pos:            new Map<string, [number, number]>(),
@@ -66,6 +71,73 @@ export function GridMap({ data, hoveredBA, onBAHover, selectedBA, onBASelect, mo
     genMap:         new Map<string, BaGenData>(),
     carbonMap:      new Map<string, number>(),
   })
+
+  // Stable — reads all visual state from refs so D3 event handlers can call it
+  // directly without going through React. Zero re-renders on mousemove.
+  const applyHoverVisuals = useCallback(() => { // eslint-disable-line react-hooks/exhaustive-deps
+    if (!svgRef.current) return
+    const svg      = d3.select(svgRef.current)
+    const pos      = S.current.pos
+    const k        = S.current.transform.k
+    const hovered  = hoveredBARef.current
+    const selected = selectedBARef.current
+    const activeBA = hovered ?? selected
+    const m        = modeRef.current
+    const cData    = carbonDataRef.current
+
+    svg.selectAll<SVGPathElement, any>('.ba-fill').each(function () {
+      const baId    = d3.select(this).attr('data-ba')
+      const isActive = baId === activeBA
+      let fill: string
+      if (m === 'carbon' && cData) {
+        const entry = cData.find(d => d.ba === baId)
+        if (entry) {
+          const c = d3.color(carbonColor(entry.intensity))!.rgb()
+          fill = isActive ? `rgba(${c.r},${c.g},${c.b},0.50)` : `rgba(${c.r},${c.g},${c.b},0.28)`
+        } else {
+          fill = isActive ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.03)'
+        }
+      } else {
+        const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333333')
+        fill = isActive ? `rgba(${r},${g},${b},0.22)` : `rgba(${r},${g},${b},0.1)`
+      }
+      d3.select(this).transition().duration(120).attr('fill', fill)
+    })
+
+    svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-ring')
+      .transition().duration(120)
+      .attr('r', ([id]) => id === activeBA ? 17/k : id === selected ? 12/k : 10/k)
+      .style('opacity', ([id]) => id === activeBA ? 0.65 : id === selected ? 0.30 : 0)
+
+    svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-dot')
+      .transition().duration(120)
+      .attr('r',            ([id]) => (id === activeBA ? 8 : id === selected ? 6 : 5) / k)
+      .attr('stroke-width', ([id]) => (id === activeBA ? 2 : 1.2) / k)
+      .attr('fill', ([id]) => {
+        const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
+        return id === activeBA ? `rgba(${r},${g},${b},1)` : `rgba(${r},${g},${b},0.85)`
+      })
+
+    svg.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-label')
+      .transition().duration(120)
+      .attr('font-size',      ([id]) => (id === activeBA ? 11 : 7) / k)
+      .attr('font-weight',    ([id]) => id === activeBA ? '600' : '500')
+      .attr('letter-spacing', ([id]) => id === activeBA ? '0.14em' : '0.1em')
+      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - (id === activeBA ? 18 : 10) / k : 0 })
+      .attr('fill', ([id]) => {
+        if (id === activeBA) { const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333'); return `rgba(${r},${g},${b},1)` }
+        return id === selected ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.45)'
+      })
+
+    svg.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-name')
+      .transition().duration(120)
+      .attr('font-size', ([id]) => (id === activeBA ? 7 : 5.5) / k)
+      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] + 16/k : 0 })
+      .attr('fill', ([id]) => {
+        if (id === activeBA) { const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333'); return `rgba(${r},${g},${b},0.7)` }
+        return 'rgba(0,0,0,0.18)'
+      })
+  }, []) // stable — all reads are from refs
 
   useEffect(() => {
     const svgEl = svgRef.current!, canvasEl = canvasRef.current!
@@ -222,8 +294,8 @@ export function GridMap({ data, hoveredBA, onBAHover, selectedBA, onBASelect, mo
         .attr('cx', ([id]) => pos.get(id)![0]).attr('cy', ([id]) => pos.get(id)![1])
         .attr('r', 18).attr('fill', 'transparent').attr('pointer-events', 'all')
         .style('cursor', 'pointer')
-        .on('mouseover', (_e, [id]) => onBAHover(id))
-        .on('mouseout',  ()         => onBAHover(null))
+        .on('mouseover', (_e, [id]) => { hoveredBARef.current = id;   applyHoverVisuals(); onBAHover(id) })
+        .on('mouseout',  ()         => { hoveredBARef.current = null; applyHoverVisuals(); onBAHover(null) })
         .on('click', (e, [id]) => { e.stopPropagation(); onBASelect(id) })
 
       // BA abbreviation label (always visible)
@@ -543,84 +615,18 @@ export function GridMap({ data, hoveredBA, onBAHover, selectedBA, onBASelect, mo
     }
   }, []) // eslint-disable-line
 
-  // ── Hover / selection highlight ───────────────────────────────────────
+  // Sync selectedBA ref and re-apply visuals when selection changes
   useEffect(() => {
-    const svg = d3.select(svgRef.current!)
-    const pos = S.current.pos
-    const k   = S.current.transform.k
-    // Active = what we fully highlight. Hover takes priority over selection.
-    const activeBA = hoveredBA ?? selectedBA
+    selectedBARef.current = selectedBA
+    applyHoverVisuals()
+  }, [selectedBA, applyHoverVisuals])
 
-    svg.selectAll<SVGPathElement, any>('.ba-fill')
-      .each(function () {
-        const baId    = d3.select(this).attr('data-ba')
-        const isActive = baId === activeBA
-        let fill: string
-        if (mode === 'carbon' && carbonData) {
-          const entry = carbonData.find(d => d.ba === baId)
-          if (entry) {
-            const c = d3.color(carbonColor(entry.intensity))!.rgb()
-            fill = isActive
-              ? `rgba(${c.r},${c.g},${c.b},0.50)`
-              : `rgba(${c.r},${c.g},${c.b},0.28)`
-          } else {
-            fill = isActive ? 'rgba(0,0,0,0.08)' : 'rgba(0,0,0,0.03)'
-          }
-        } else {
-          const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333333')
-          fill = isActive ? `rgba(${r},${g},${b},0.22)` : `rgba(${r},${g},${b},0.1)`
-        }
-        d3.select(this).transition().duration(200).attr('fill', fill)
-      })
-
-    svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-ring')
-      .transition().duration(200)
-      .attr('r', ([id]) => {
-        if (id === activeBA)   return 17 / k
-        if (id === selectedBA) return 12 / k  // smaller persistent ring
-        return 10 / k
-      })
-      .style('opacity', ([id]) => {
-        if (id === activeBA)   return 0.65
-        if (id === selectedBA) return 0.30    // subtle always-visible ring
-        return 0
-      })
-
-    svg.selectAll<SVGCircleElement, (typeof BA_DEFS)[number]>('circle.ba-dot')
-      .transition().duration(200)
-      .attr('r',           ([id]) => (id === activeBA ? 8 : id === selectedBA ? 6 : 5) / k)
-      .attr('stroke-width',([id]) => (id === activeBA ? 2 : 1.2) / k)
-      .attr('fill', ([id]) => {
-        const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
-        return id === activeBA ? `rgba(${r},${g},${b},1)` : `rgba(${r},${g},${b},0.85)`
-      })
-
-    svg.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-label')
-      .transition().duration(200)
-      .attr('font-size',     ([id]) => (id === activeBA ? 11 : 7) / k)
-      .attr('font-weight',   ([id]) => id === activeBA ? '600' : '500')
-      .attr('letter-spacing',([id]) => id === activeBA ? '0.14em' : '0.1em')
-      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - (id === activeBA ? 18 : 10) / k : 0 })
-      .attr('fill', ([id]) => {
-        if (id === activeBA) {
-          const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
-          return `rgba(${r},${g},${b},1)`
-        }
-        return id === selectedBA ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.45)'
-      })
-
-    svg.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-name')
-      .transition().duration(200)
-      .attr('font-size', ([id]) => (id === activeBA ? 7 : 5.5) / k)
-      .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] + 16 / k : 0 })
-      .attr('fill', ([id]) => {
-        if (id === activeBA) {
-          const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
-          return `rgba(${r},${g},${b},0.7)`
-        }
-        return 'rgba(0,0,0,0.18)'
-      })
-  }, [hoveredBA, selectedBA, mode, carbonData]) // eslint-disable-line
+  // Sync mode/carbon refs and re-apply when mode or carbon data changes
+  useEffect(() => {
+    modeRef.current      = mode
+    carbonDataRef.current = carbonData
+    applyHoverVisuals()
+  }, [mode, carbonData, applyHoverVisuals])
 
   // ── Rebuild arcs on new data ──────────────────────────────────────────
   useEffect(() => {
@@ -661,24 +667,6 @@ export function GridMap({ data, hoveredBA, onBAHover, selectedBA, onBASelect, mo
     if (carbonData) carbonData.forEach(d => m.set(d.ba, d.intensity))
     S.current.carbonMap = m
   }, [carbonData])
-
-  // Update Voronoi fill colors when mode or carbon data changes
-  useEffect(() => {
-    const svg = d3.select(svgRef.current!)
-    svg.selectAll<SVGPathElement, any>('.ba-fill')
-      .attr('fill', function () {
-        const baId = d3.select(this).attr('data-ba')
-        if (mode === 'carbon' && carbonData) {
-          const entry = carbonData.find(d => d.ba === baId)
-          if (entry) {
-            const c = d3.color(carbonColor(entry.intensity))!.rgb()
-            return `rgba(${c.r},${c.g},${c.b},0.28)`
-          }
-        }
-        const { r, g, b } = hexToRgb(BA_COLORS[baId] ?? '#333')
-        return `rgba(${r},${g},${b},${baId === hoveredBA ? 0.22 : 0.1})`
-      })
-  }, [mode, carbonData]) // eslint-disable-line
 
   return (
     <div style={{ position: 'absolute', inset: 0 }}>

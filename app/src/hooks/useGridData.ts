@@ -1,33 +1,17 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { GridData } from '../types'
 
-const API = '/api/interchange'
-const POLL_MS = 5 * 60 * 1000
-
 export function useGridData() {
-  const [data, setData]       = useState<GridData | null>(null)
-  const [error, setError]     = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  const fetch_ = useCallback(async () => {
-    try {
-      const res = await fetch(API)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const json: GridData = await res.json()
-      setData(json)
-      setError(null)
-    } catch (e) {
-      setError('server offline')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetch_()
-    const id = setInterval(fetch_, POLL_MS)
-    return () => clearInterval(id)
-  }, [fetch_])
-
-  return { data, error, loading }
+  const { data, error, isLoading } = useQuery<GridData>({
+    queryKey: ['interchange'],
+    queryFn: () => fetch('/api/interchange').then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      return r.json()
+    }),
+  })
+  return {
+    data:    data ?? null,
+    error:   error ? 'server offline' : null,
+    loading: isLoading,
+  }
 }

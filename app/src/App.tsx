@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
 import { GridMap }           from './components/GridMap'
 import { HUD }               from './components/HUD'
@@ -29,11 +30,31 @@ export default function App() {
 
   const { genData }    = useGenerationData()
   const { carbonData } = useCarbonData()
+  const queryClient    = useQueryClient()
 
   const displayedBA = hoveredBA ?? selectedBA
+  const hoverTimer  = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Prefetch dispatch data for a BA — fires silently, no-ops if already cached
+  function prefetchDispatch(baId: string, hours = 48) {
+    const params = `ba=${encodeURIComponent(baId)}&hours=${hours}`
+    queryClient.prefetchQuery({ queryKey: ['history', baId, hours], queryFn: () => fetch(`/api/history?${params}`).then(r => r.json()) })
+    queryClient.prefetchQuery({ queryKey: ['duck',    baId, hours], queryFn: () => fetch(`/api/duck-curve?${params}`).then(r => r.json()) })
+  }
+
+  // Warm the default BA on startup so first dispatch visit is instant
+  useEffect(() => { prefetchDispatch('CISO') }, []) // eslint-disable-line
+
+  // Debounce hover: 60ms enter, 80ms leave — prevents jitter when cursor
+  // moves quickly between BAs or briefly grazes the hit area
+  function handleBAHover(id: string | null) {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    hoverTimer.current = setTimeout(() => setHoveredBA(id), id ? 60 : 80)
+  }
 
   function handleBASelect(id: string | null) {
     setSelectedBA(prev => prev === id ? null : id)
+    if (id) prefetchDispatch(id) // start fetching immediately on click
   }
 
   function navigateToDispatch(baId: string) {
@@ -86,7 +107,7 @@ export default function App() {
         ))}
       </div>
 
-      <AnimatePresence mode="wait">
+      <AnimatePresence>
         {view === 'grid' ? (
           <motion.div key="grid"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -94,7 +115,7 @@ export default function App() {
             style={{ position: 'fixed', inset: 0 }}
           >
             <GridMap
-              data={data} hoveredBA={hoveredBA} onBAHover={setHoveredBA}
+              data={data} onBAHover={handleBAHover}
               selectedBA={selectedBA} onBASelect={handleBASelect}
               mode={mode} layers={layers} genData={genData} carbonData={carbonData}
             />

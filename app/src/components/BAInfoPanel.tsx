@@ -68,6 +68,12 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
             className="glass"
             style={{ padding: '16px 18px', pointerEvents: 'all' }}
           >
+            {/* Inner content crossfades when hovering a different BA while panel stays mounted */}
+            <AnimatePresence mode="wait">
+            <motion.div key={baId}
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: 0.08 }}
+            >
             {/* ── Header ── */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <div style={{
@@ -199,6 +205,8 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
                 </button>
               </>
             )}
+            </motion.div>
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
