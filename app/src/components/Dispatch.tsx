@@ -27,7 +27,7 @@ interface Props {
 export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaChange }: Props) {
   const [hours, setHours] = useState(48)
 
-  const { history, duck, loading } = useHistoryData(ba, hours)
+  const { history, duck, loading, fetching } = useHistoryData(ba, hours)
 
   const baColor = BA_COLORS[ba] ?? '#333'
   const baName  = BA_NAME_MAP[ba] ?? ba
@@ -101,15 +101,19 @@ export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaC
           ))}
         </div>
 
-        {loading && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'rgba(0,0,0,0.3)' }}>
-            loading…
+        {fetching && !loading && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'rgba(0,0,0,0.25)' }}>
+            updating…
           </span>
         )}
       </div>
 
       {/* Chart grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+      <div style={{
+        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20,
+        opacity: fetching && !loading ? 0.55 : 1,
+        transition: 'opacity 0.15s ease',
+      }}>
         <ChartCard title="Duck Curve — Net Load vs Renewable Output">
           {duck ? <DuckCurve data={duck} /> : loading ? <ChartSkeleton /> : <Placeholder />}
         </ChartCard>
