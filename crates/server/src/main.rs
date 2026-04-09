@@ -1,6 +1,7 @@
 use anyhow::Result;
 use axum::{extract::{Query, State}, http::StatusCode, response::Json, routing::get, Router};
 use chrono::Utc;
+use moka::future::Cache;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,7 +30,8 @@ struct AppState {
     eia_key:       String,
     http:          reqwest::Client,
     gen_cache:     Arc<RwLock<Option<CachedGen>>>,
-    history_cache: Arc<RwLock<HashMap<String, CachedHistory>>>,
+    /// Keyed by "ba:hours" or "duck:ba:hours". TTL + eviction managed by moka.
+    history_cache: Cache<String, Arc<serde_json::Value>>,
 }
 
 struct CachedGen {
@@ -37,10 +39,7 @@ struct CachedGen {
     fetched_at: Instant,
 }
 
-struct CachedHistory {
-    data:       serde_json::Value,
-    fetched_at: Instant,
-}
+// history_cache TTL and eviction are managed by moka — no manual CachedHistory needed
 
 // ── EIA interchange response ──────────────────────────────────────────────
 #[derive(Deserialize)]
@@ -407,117 +406,87 @@ async fn history_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<Vec<GenHistoryPoint>>, StatusCode> {
-    let hours = params.hours.unwrap_or(48).min(168); // cap at 1 week
+    let hours     = params.hours.unwrap_or(48).min(168);
     let cache_key = format!("{}:{}", params.ba, hours);
+    let state2    = Arc::clone(&state);
+    let ba        = params.ba.clone();
 
-    // Check cache
-    {
-        let cache = state.history_cache.read().await;
-        if let Some(c) = cache.get(&cache_key) {
-            if c.fetched_at.elapsed() < Duration::from_secs(5 * 60) {
-                if let Ok(data) = serde_json::from_value::<Vec<GenHistoryPoint>>(c.data.clone()) {
-                    return Ok(Json(data));
+    let cached = state.history_cache
+        .try_get_with(cache_key, async move {
+            let records = fetch_history(&state2, &ba, hours).await?;
+            let mut period_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+            for r in &records {
+                if let Some(mw) = r.value {
+                    if mw <= 0.0 { continue; }
+                    let fuel = normalize_fuel(&r.fueltype).to_string();
+                    *period_map.entry(r.period.clone()).or_default()
+                        .entry(fuel).or_insert(0.0) += mw;
                 }
             }
-        }
-    }
+            let mut result: Vec<GenHistoryPoint> = period_map.into_iter().map(|(period, fuel_map)| {
+                let total_mw: f64 = fuel_map.values().sum();
+                let mut fuels: Vec<FuelEntry> = fuel_map.into_iter()
+                    .map(|(fuel, mw)| FuelEntry { fuel, mw })
+                    .collect();
+                fuels.sort_by(|a, b| b.mw.partial_cmp(&a.mw).unwrap_or(std::cmp::Ordering::Equal));
+                GenHistoryPoint { period, fuels, total_mw }
+            }).collect();
+            result.sort_by(|a, b| a.period.cmp(&b.period));
+            Ok::<_, anyhow::Error>(Arc::new(serde_json::to_value(&result)?))
+        })
+        .await
+        .map_err(|e| { tracing::error!("EIA history fetch failed for {}: {e:#}", params.ba); StatusCode::BAD_GATEWAY })?;
 
-    let records = fetch_history(&state, &params.ba, hours).await.map_err(|e| {
-        tracing::error!("EIA history fetch failed for {}: {e:#}", params.ba);
-        StatusCode::BAD_GATEWAY
-    })?;
-
-    // Group by period → fuel → mw
-    let mut period_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
-    for r in &records {
-        if let Some(mw) = r.value {
-            if mw <= 0.0 { continue; }
-            let fuel = normalize_fuel(&r.fueltype).to_string();
-            *period_map.entry(r.period.clone()).or_default()
-                .entry(fuel).or_insert(0.0) += mw;
-        }
-    }
-
-    let mut result: Vec<GenHistoryPoint> = period_map.into_iter().map(|(period, fuel_map)| {
-        let total_mw: f64 = fuel_map.values().sum();
-        let mut fuels: Vec<FuelEntry> = fuel_map.into_iter()
-            .map(|(fuel, mw)| FuelEntry { fuel, mw })
-            .collect();
-        fuels.sort_by(|a, b| b.mw.partial_cmp(&a.mw).unwrap_or(std::cmp::Ordering::Equal));
-        GenHistoryPoint { period, fuels, total_mw }
-    }).collect();
-    result.sort_by(|a, b| a.period.cmp(&b.period));
-
-    // Store in cache
-    if let Ok(v) = serde_json::to_value(&result) {
-        let mut cache = state.history_cache.write().await;
-        cache.insert(cache_key, CachedHistory { data: v, fetched_at: Instant::now() });
-    }
-
-    Ok(Json(result))
+    let data = serde_json::from_value::<Vec<GenHistoryPoint>>((*cached).clone())
+        .map_err(|e| { tracing::error!("history deserialize failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    Ok(Json(data))
 }
 
 async fn duck_curve_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryParams>,
 ) -> Result<Json<Vec<DuckPoint>>, StatusCode> {
-    let hours = params.hours.unwrap_or(48).min(168);
+    let hours     = params.hours.unwrap_or(48).min(168);
     let cache_key = format!("duck:{}:{}", params.ba, hours);
+    let state2    = Arc::clone(&state);
+    let ba        = params.ba.clone();
 
-    // Check cache
-    {
-        let cache = state.history_cache.read().await;
-        if let Some(c) = cache.get(&cache_key) {
-            if c.fetched_at.elapsed() < Duration::from_secs(5 * 60) {
-                if let Ok(data) = serde_json::from_value::<Vec<DuckPoint>>(c.data.clone()) {
-                    return Ok(Json(data));
+    let cached = state.history_cache
+        .try_get_with(cache_key, async move {
+            let records = fetch_history(&state2, &ba, hours).await?;
+            let mut period_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
+            for r in &records {
+                if let Some(mw) = r.value {
+                    if mw <= 0.0 { continue; }
+                    let fuel = normalize_fuel(&r.fueltype).to_string();
+                    *period_map.entry(r.period.clone()).or_default()
+                        .entry(fuel).or_insert(0.0) += mw;
                 }
             }
-        }
-    }
+            let mut result: Vec<DuckPoint> = period_map.into_iter().map(|(period, fuel_map)| {
+                let solar_mw   = *fuel_map.get("solar").unwrap_or(&0.0);
+                let wind_mw    = *fuel_map.get("wind").unwrap_or(&0.0);
+                let nuclear_mw = *fuel_map.get("nuclear").unwrap_or(&0.0);
+                let gas_mw     = *fuel_map.get("gas").unwrap_or(&0.0);
+                let coal_mw    = *fuel_map.get("coal").unwrap_or(&0.0);
+                let hydro_mw   = *fuel_map.get("hydro").unwrap_or(&0.0);
+                let total_mw: f64 = fuel_map.values().sum();
+                let net_load_mw = (total_mw - solar_mw - wind_mw).max(0.0);
+                let fuels: Vec<FuelEntry> = fuel_map.iter()
+                    .map(|(fuel, &mw)| FuelEntry { fuel: fuel.clone(), mw })
+                    .collect();
+                let intensity = carbon_intensity(&fuels);
+                DuckPoint { period, total_mw, solar_mw, wind_mw, net_load_mw, nuclear_mw, gas_mw, coal_mw, hydro_mw, intensity }
+            }).collect();
+            result.sort_by(|a, b| a.period.cmp(&b.period));
+            Ok::<_, anyhow::Error>(Arc::new(serde_json::to_value(&result)?))
+        })
+        .await
+        .map_err(|e| { tracing::error!("EIA duck-curve fetch failed for {}: {e:#}", params.ba); StatusCode::BAD_GATEWAY })?;
 
-    let records = fetch_history(&state, &params.ba, hours).await.map_err(|e| {
-        tracing::error!("EIA duck-curve fetch failed for {}: {e:#}", params.ba);
-        StatusCode::BAD_GATEWAY
-    })?;
-
-    // Group by period
-    let mut period_map: HashMap<String, HashMap<String, f64>> = HashMap::new();
-    for r in &records {
-        if let Some(mw) = r.value {
-            if mw <= 0.0 { continue; }
-            let fuel = normalize_fuel(&r.fueltype).to_string();
-            *period_map.entry(r.period.clone()).or_default()
-                .entry(fuel).or_insert(0.0) += mw;
-        }
-    }
-
-    let mut result: Vec<DuckPoint> = period_map.into_iter().map(|(period, fuel_map)| {
-        let solar_mw  = *fuel_map.get("solar").unwrap_or(&0.0);
-        let wind_mw   = *fuel_map.get("wind").unwrap_or(&0.0);
-        let nuclear_mw = *fuel_map.get("nuclear").unwrap_or(&0.0);
-        let gas_mw    = *fuel_map.get("gas").unwrap_or(&0.0);
-        let coal_mw   = *fuel_map.get("coal").unwrap_or(&0.0);
-        let hydro_mw  = *fuel_map.get("hydro").unwrap_or(&0.0);
-        let total_mw: f64 = fuel_map.values().sum();
-        let net_load_mw = (total_mw - solar_mw - wind_mw).max(0.0);
-
-        let fuels: Vec<FuelEntry> = fuel_map.iter()
-            .map(|(fuel, &mw)| FuelEntry { fuel: fuel.clone(), mw })
-            .collect();
-        let intensity = carbon_intensity(&fuels);
-
-        DuckPoint { period, total_mw, solar_mw, wind_mw, net_load_mw, nuclear_mw, gas_mw, coal_mw, hydro_mw, intensity }
-    }).collect();
-    result.sort_by(|a, b| a.period.cmp(&b.period));
-
-    // Store in cache
-    if let Ok(v) = serde_json::to_value(&result) {
-        let mut cache = state.history_cache.write().await;
-        cache.insert(cache_key, CachedHistory { data: v, fetched_at: Instant::now() });
-    }
-
-    Ok(Json(result))
+    let data = serde_json::from_value::<Vec<DuckPoint>>((*cached).clone())
+        .map_err(|e| { tracing::error!("duck deserialize failed: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+    Ok(Json(data))
 }
 
 async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
@@ -609,11 +578,31 @@ async fn main() -> Result<()> {
 
     let eia_key = std::env::var("EIA_API_KEY").expect("EIA_API_KEY must be set");
 
+    let history_cache = Cache::builder()
+        .max_capacity(512)
+        .time_to_live(Duration::from_secs(5 * 60))
+        .build();
+
     let state = Arc::new(AppState {
         eia_key,
         http:          reqwest::Client::new(),
         gen_cache:     Arc::new(RwLock::new(None)),
-        history_cache: Arc::new(RwLock::new(HashMap::new())),
+        history_cache,
+    });
+
+    // Background gen refresh — warms cache on startup, then every 4.5 minutes.
+    // Users always get instant responses; no one ever hits a cold gen_cache.
+    tokio::spawn({
+        let state = Arc::clone(&state);
+        async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(4 * 60 + 30));
+            loop {
+                interval.tick().await;
+                if let Err(e) = fetch_generation(&state).await {
+                    tracing::warn!("background gen refresh failed: {e:#}");
+                }
+            }
+        }
     });
 
     let app = Router::new()

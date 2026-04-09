@@ -4,11 +4,19 @@ import { GridMap }           from './components/GridMap'
 import { HUD }               from './components/HUD'
 import { BAInfoPanel }       from './components/BAInfoPanel'
 import { ModeBar, DEFAULT_LAYERS } from './components/ModeBar'
+import { Dispatch }          from './components/Dispatch'
 import { Analytics }         from './components/Analytics'
 import { useGridData }       from './hooks/useGridData'
 import { useGenerationData } from './hooks/useGenerationData'
 import { useCarbonData }     from './hooks/useCarbonData'
 import type { Mode, LayerKey } from './types'
+
+type View = 'grid' | 'dispatch' | 'analytics'
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'grid',      label: 'grid'      },
+  { id: 'dispatch',  label: 'dispatch'  },
+  { id: 'analytics', label: 'analytics' },
+]
 
 export default function App() {
   const { data, error, loading } = useGridData()
@@ -16,8 +24,8 @@ export default function App() {
   const [selectedBA, setSelectedBA] = useState<string | null>(null)
   const [mode,   setMode]   = useState<Mode>('flow')
   const [layers, setLayers] = useState<Set<LayerKey>>(new Set(DEFAULT_LAYERS))
-  const [view,   setView]   = useState<'map' | 'analytics'>('map')
-  const [analyticsBA, setAnalyticsBA] = useState('CISO')
+  const [view,   setView]   = useState<View>('grid')
+  const [dispatchBA, setDispatchBA] = useState('CISO')
 
   const { genData }    = useGenerationData()
   const { carbonData } = useCarbonData()
@@ -28,13 +36,13 @@ export default function App() {
     setSelectedBA(prev => prev === id ? null : id)
   }
 
-  function navigateToAnalytics(baId: string) {
-    setAnalyticsBA(baId)
-    setView('analytics')
+  function navigateToDispatch(baId: string) {
+    setDispatchBA(baId)
+    setView('dispatch')
   }
 
-  function handleViewToggle(v: 'map' | 'analytics') {
-    if (v === 'analytics' && selectedBA) setAnalyticsBA(selectedBA)
+  function handleViewToggle(v: View) {
+    if (v === 'dispatch' && selectedBA) setDispatchBA(selectedBA)
     setView(v)
   }
 
@@ -59,12 +67,12 @@ export default function App() {
         borderRadius: 999, padding: 4,
         boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       }}>
-        {(['map', 'analytics'] as const).map(v => (
-          <button key={v} onClick={() => handleViewToggle(v)} style={{
-            background: view === v ? 'rgba(0,102,204,0.08)' : 'transparent',
-            border: view === v ? '1px solid rgba(0,102,204,0.2)' : '1px solid transparent',
+        {VIEWS.map(v => (
+          <button key={v.id} onClick={() => handleViewToggle(v.id)} style={{
+            background: view === v.id ? 'rgba(0,102,204,0.08)' : 'transparent',
+            border: view === v.id ? '1px solid rgba(0,102,204,0.2)' : '1px solid transparent',
             borderRadius: 999,
-            color: view === v ? '#0066cc' : 'rgba(0,0,0,0.35)',
+            color: view === v.id ? '#0066cc' : 'rgba(0,0,0,0.35)',
             fontFamily: 'var(--font-mono)',
             fontSize: 9,
             letterSpacing: '0.18em',
@@ -73,14 +81,14 @@ export default function App() {
             cursor: 'pointer',
             transition: 'all 0.18s ease',
           }}>
-            {v}
+            {v.label}
           </button>
         ))}
       </div>
 
       <AnimatePresence mode="wait">
-        {view === 'map' ? (
-          <motion.div key="map"
+        {view === 'grid' ? (
+          <motion.div key="grid"
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
             style={{ position: 'fixed', inset: 0 }}
@@ -93,9 +101,20 @@ export default function App() {
             <HUD data={data} error={error} loading={loading} />
             <BAInfoPanel
               baId={displayedBA} selectedBA={selectedBA} data={data} genData={genData}
-              onViewAnalytics={navigateToAnalytics}
+              onViewAnalytics={navigateToDispatch}
             />
             <ModeBar mode={mode} layers={layers} onMode={setMode} onLayerToggle={toggleLayer} />
+          </motion.div>
+        ) : view === 'dispatch' ? (
+          <motion.div key="dispatch"
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            style={{ position: 'fixed', inset: 0 }}
+          >
+            <Dispatch
+              genData={genData} carbonData={carbonData}
+              ba={dispatchBA} onBaChange={setDispatchBA}
+            />
           </motion.div>
         ) : (
           <motion.div key="analytics"
@@ -103,10 +122,7 @@ export default function App() {
             transition={{ duration: 0.18 }}
             style={{ position: 'fixed', inset: 0 }}
           >
-            <Analytics
-              genData={genData} carbonData={carbonData}
-              ba={analyticsBA} onBaChange={setAnalyticsBA}
-            />
+            <Analytics />
           </motion.div>
         )}
       </AnimatePresence>
