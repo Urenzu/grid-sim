@@ -59,7 +59,10 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
 
   const S = useRef({
     transform:      d3.zoomIdentity as d3.ZoomTransform,
-    // Geo (pre-computed once after us-states.json loads)
+    // Geo (pre-computed, rebuilt on resize)
+    W:              window.innerWidth,
+    H:              window.innerHeight,
+    usGeo:          null as any,
     geoReady:       false,
     continentalP2d: null as Path2D | null,
     stateMeshP2d:   null as Path2D | null,
@@ -96,12 +99,89 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
 
   useEffect(() => {
     const canvas = canvasRef.current!
-    const W = window.innerWidth, H = window.innerHeight
-    canvas.width = W; canvas.height = H
     const ctx = canvas.getContext('2d')!
 
-    const proj    = d3.geoAlbersUsa().scale(1200).translate([W / 2, H / 2])
-    const pathStr = d3.geoPath().projection(proj) // SVG string — for Path2D construction
+    // ── Size canvas to physical pixels ───────────────────────────────────
+    function resizeCanvas() {
+      const dpr = window.devicePixelRatio || 1
+      const W   = window.innerWidth
+      const H   = window.innerHeight
+      canvas.width  = W * dpr
+      canvas.height = H * dpr
+      ctx.scale(dpr, dpr)
+      S.current.W = W
+      S.current.H = H
+    }
+    resizeCanvas()
+
+    // ── Build all geo Path2D objects from stored TopoJSON ────────────────
+    function rebuildGeo(us: any) {
+      const { W, H } = S.current
+      const proj    = d3.geoAlbersUsa().scale(1200).translate([W / 2, H / 2])
+      const pathStr = d3.geoPath().projection(proj)
+
+      const continental = topojson.merge(
+        us, us.objects.states.geometries.filter((g: any) => g.id !== '02' && g.id !== '15')
+      ) as any
+      const stateMesh = topojson.mesh(
+        us, us.objects.states,
+        (a: any, b: any) => a !== b && a.id !== '02' && b.id !== '02' && a.id !== '15' && b.id !== '15'
+      ) as any
+
+      const contStr = pathStr(continental)
+      S.current.continentalP2d = contStr ? new Path2D(contStr) : null
+      const meshStr = pathStr(stateMesh)
+      S.current.stateMeshP2d = meshStr ? new Path2D(meshStr) : null
+
+      const pos = new Map<string, [number, number]>()
+      for (const [id, , lonlat] of BA_DEFS) {
+        const p = proj(lonlat as [number, number])
+        if (p) pos.set(id, p as [number, number])
+      }
+      S.current.pos = pos
+
+      S.current.baList = BA_DEFS.flatMap(([id, name]) => {
+        const pt = pos.get(id); return pt ? [{ id, name, pt }] : []
+      })
+
+      const seeds: { id: string; pt: [number, number] }[] = [
+        ...S.current.baList.map(b => ({ id: b.id, pt: b.pt })),
+      ]
+      for (const [id, lonlat] of EXTRA_SEEDS) {
+        const p = proj(lonlat as [number, number])
+        if (p) seeds.push({ id, pt: p as [number, number] })
+      }
+      const voronoi = d3.Delaunay.from(seeds.map(s => s.pt)).voronoi([0, 0, W, H])
+      S.current.voronoiCells = seeds.map((s, i) => ({
+        id: s.id, path2d: new Path2D(voronoi.renderCell(i)),
+      }))
+
+      S.current.plantPts = { nuclear: [], hydro: [], wind: [], solar: [], gas: [], coal: [] }
+      const plantSources: [keyof typeof S.current.plantPts, [string, number, number, number][]][] = [
+        ['nuclear', NUCLEAR_PLANTS], ['hydro', HYDRO_PLANTS],
+        ['wind', WIND_FARMS],        ['solar', SOLAR_FARMS],
+        ['gas', GAS_PLANTS],         ['coal', COAL_PLANTS],
+      ]
+      for (const [fuel, list] of plantSources) {
+        for (const [, lon, lat, cap] of list) {
+          const p = proj([lon, lat]); if (p) S.current.plantPts[fuel].push([p[0], p[1], cap])
+        }
+      }
+
+      // Rebuild arcs with new positions
+      const d = dataRef.current
+      if (d) {
+        const maxMW = d3.max(d.links, l => Math.abs(l.value)) ?? 1
+        S.current.particles = []
+        S.current.arcData = d.links.flatMap(l => {
+          const src = pos.get(l.source), tgt = pos.get(l.target)
+          if (!src || !tgt) return []
+          return [{ src, cp: controlPoint(src, tgt), tgt, norm: Math.abs(l.value) / maxMW, fwd: l.value > 0, srcId: l.source, tgtId: l.target }]
+        })
+      }
+
+      S.current.geoReady = true
+    }
 
     // ── D3 zoom on canvas ────────────────────────────────────────────────
     d3.select(canvas)
@@ -147,69 +227,21 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
       onBASelectRef.current(hitBA(e.offsetX, e.offsetY))
     })
 
-    // ── Load geo → build Path2D objects (once) ───────────────────────────
+    // ── Debounced resize handler ─────────────────────────────────────────
+    let resizeTimer = 0
+    function handleResize() {
+      resizeCanvas() // immediate — keeps canvas pixel-perfect during drag
+      clearTimeout(resizeTimer)
+      resizeTimer = window.setTimeout(() => {
+        if (S.current.usGeo) rebuildGeo(S.current.usGeo)
+      }, 120)
+    }
+    window.addEventListener('resize', handleResize)
+
+    // ── Load geo → build Path2D objects ──────────────────────────────────
     fetch('/us-states.json').then(r => r.json()).then((us: any) => {
-      const continental = topojson.merge(
-        us, us.objects.states.geometries.filter((g: any) => g.id !== '02' && g.id !== '15')
-      ) as any
-      const stateMesh = topojson.mesh(
-        us, us.objects.states,
-        (a: any, b: any) => a !== b && a.id !== '02' && b.id !== '02' && a.id !== '15' && b.id !== '15'
-      ) as any
-
-      const contStr = pathStr(continental)
-      if (contStr) S.current.continentalP2d = new Path2D(contStr)
-      const meshStr = pathStr(stateMesh)
-      if (meshStr) S.current.stateMeshP2d = new Path2D(meshStr)
-
-      // Project BA positions
-      const pos = S.current.pos
-      for (const [id, , lonlat] of BA_DEFS) {
-        const p = proj(lonlat as [number, number])
-        if (p) pos.set(id, p as [number, number])
-      }
-
-      S.current.baList = BA_DEFS.flatMap(([id, name]) => {
-        const pt = pos.get(id); return pt ? [{ id, name, pt }] : []
-      })
-
-      // Voronoi cells → pre-computed Path2D (reused every frame, no allocation)
-      const seeds: { id: string; pt: [number, number] }[] = [
-        ...S.current.baList.map(b => ({ id: b.id, pt: b.pt })),
-      ]
-      for (const [id, lonlat] of EXTRA_SEEDS) {
-        const p = proj(lonlat as [number, number])
-        if (p) seeds.push({ id, pt: p as [number, number] })
-      }
-      const voronoi = d3.Delaunay.from(seeds.map(s => s.pt)).voronoi([0, 0, W, H])
-      S.current.voronoiCells = seeds.map((s, i) => ({
-        id: s.id, path2d: new Path2D(voronoi.renderCell(i)),
-      }))
-
-      // Plant positions
-      const plantSources: [keyof typeof S.current.plantPts, [string, number, number, number][]][] = [
-        ['nuclear', NUCLEAR_PLANTS], ['hydro', HYDRO_PLANTS],
-        ['wind', WIND_FARMS],        ['solar', SOLAR_FARMS],
-        ['gas', GAS_PLANTS],         ['coal', COAL_PLANTS],
-      ]
-      for (const [fuel, list] of plantSources) {
-        for (const [, lon, lat, cap] of list) {
-          const p = proj([lon, lat]); if (p) S.current.plantPts[fuel].push([p[0], p[1], cap])
-        }
-      }
-
-      // Build arcs if grid data arrived before geo loaded
-      const d = dataRef.current
-      if (d) {
-        const maxMW = d3.max(d.links, l => Math.abs(l.value)) ?? 1
-        S.current.arcData = d.links.flatMap(l => {
-          const src = pos.get(l.source), tgt = pos.get(l.target)
-          if (!src || !tgt) return []
-          return [{ src, cp: controlPoint(src, tgt), tgt, norm: Math.abs(l.value) / maxMW, fwd: l.value > 0, srcId: l.source, tgtId: l.target }]
-        })
-      }
-
-      S.current.geoReady = true
+      S.current.usGeo = us
+      rebuildGeo(us)
     })
 
     // ── RAF render loop ───────────────────────────────────────────────────
@@ -228,7 +260,7 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
         ss.hoverT.set(id, cur + (target - cur) * 0.2)
       }
 
-      ctx.clearRect(0, 0, W, H)
+      ctx.clearRect(0, 0, ss.W, ss.H)
       ctx.save()
       ctx.translate(T.x, T.y)
       ctx.scale(T.k, T.k)
@@ -505,24 +537,62 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
         ctx.fill(); ctx.stroke()
       }
 
-      // ── BA labels ─────────────────────────────────────────────────────
+      // ── BA labels — pill chips ────────────────────────────────────────
+      const hPad = 4 / T.k
+      const vPad = 2.5 / T.k
+      const pRad = 3 / T.k
+
       for (const { id, name, pt } of ss.baList) {
-        const t   = ss.hoverT.get(id) ?? 0
-        const isA = id === activeBA
+        const t    = ss.hoverT.get(id) ?? 0
         const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
+        const dotR = (5 + t * 3) / T.k
 
-        // Abbreviation
-        ctx.font = `${isA ? 600 : 500} ${(7 + t * 4) / T.k}px IBM Plex Mono, monospace`
+        // 9px screen-space at rest, grows to 13px on full hover
+        const textSize = (9 + t * 4) / T.k
+        ctx.font = `${t > 0.3 ? 600 : 500} ${textSize}px IBM Plex Mono, monospace`
         ctx.textAlign    = 'center'
-        ctx.textBaseline = 'bottom'
-        ctx.fillStyle    = isA ? `rgba(${r},${g},${b},1)` : `rgba(0,0,0,${0.35 + t * 0.25})`
-        ctx.fillText(id, pt[0], pt[1] - (10 + t * 8) / T.k)
+        ctx.textBaseline = 'alphabetic'
 
-        // Full name
-        ctx.font = `400 ${(5.5 + t * 1.5) / T.k}px IBM Plex Mono, monospace`
-        ctx.textBaseline = 'top'
-        ctx.fillStyle    = isA ? `rgba(${r},${g},${b},0.7)` : `rgba(0,0,0,${0.12 + t * 0.06})`
-        ctx.fillText(name, pt[0], pt[1] + 16 / T.k)
+        const tw   = ctx.measureText(id).width
+        const capH = textSize * 0.68   // approx cap height for IBM Plex Mono
+        const pillW = tw + hPad * 2
+        const pillH = capH + vPad * 2
+
+        // Pill floats above the dot
+        const pillGap  = 5 / T.k
+        const pillCY   = pt[1] - dotR - pillGap - pillH / 2
+        const pillTop  = pillCY - pillH / 2
+        const pillLeft = pt[0] - pillW / 2
+
+        // Background
+        ctx.beginPath()
+        ctx.roundRect(pillLeft, pillTop, pillW, pillH, pRad)
+        ctx.fillStyle = `rgba(255,255,255,${0.78 + t * 0.14})`
+        ctx.fill()
+
+        // BA-colored border fades in with hover
+        if (t > 0.04) {
+          ctx.strokeStyle = `rgba(${r},${g},${b},${t * 0.65})`
+          ctx.lineWidth   = 0.7 / T.k
+          ctx.stroke()
+        }
+
+        // Abbreviation text — near-black at rest, BA color on hover
+        ctx.fillStyle = t > 0.15
+          ? `rgba(${r},${g},${b},${0.52 + t * 0.48})`
+          : `rgba(20,20,20,${0.52 + t * 0.48})`
+        ctx.fillText(id, pt[0], pillCY + capH * 0.5)
+
+        // Full name fades in above 2× zoom, below the dot
+        if (T.k > 2) {
+          const nameOpacity = Math.min(1, (T.k - 2) / 1.2) * (0.4 + t * 0.4)
+          ctx.font         = `400 ${7 / T.k}px IBM Plex Mono, monospace`
+          ctx.textBaseline = 'top'
+          ctx.fillStyle    = t > 0.15
+            ? `rgba(${r},${g},${b},${nameOpacity})`
+            : `rgba(20,20,20,${nameOpacity})`
+          ctx.fillText(name, pt[0], pt[1] + dotR + 4 / T.k)
+        }
       }
 
       ctx.restore()
@@ -532,6 +602,8 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
 
     return () => {
       cancelAnimationFrame(S.current.raf)
+      clearTimeout(resizeTimer)
+      window.removeEventListener('resize', handleResize)
       d3.select(canvas).on('.zoom', null)
       S.current.pos.clear()
       S.current.arcData = []; S.current.particles = []
