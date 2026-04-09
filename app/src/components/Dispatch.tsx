@@ -111,19 +111,19 @@ export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaC
       {/* Chart grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
         <ChartCard title="Duck Curve — Net Load vs Renewable Output">
-          {duck ? <DuckCurve data={duck} /> : <Placeholder />}
+          {duck ? <DuckCurve data={duck} /> : loading ? <ChartSkeleton /> : <Placeholder />}
         </ChartCard>
 
         <ChartCard title="Fuel Mix — Generation by Source">
-          {history ? <FuelMixArea data={history} /> : <Placeholder />}
+          {history ? <FuelMixArea data={history} /> : loading ? <ChartSkeleton /> : <Placeholder />}
         </ChartCard>
 
         <ChartCard title="Carbon Intensity — g CO₂/kWh">
-          {duck ? <CarbonLine data={duck} /> : <Placeholder />}
+          {duck ? <CarbonLine data={duck} /> : loading ? <ChartSkeleton /> : <Placeholder />}
         </ChartCard>
 
         <ChartCard title="Renewable Penetration — % of Generation">
-          {duck ? <RenewablePenetration data={duck} /> : <Placeholder />}
+          {duck ? <RenewablePenetration data={duck} /> : loading ? <ChartSkeleton /> : <Placeholder />}
         </ChartCard>
       </div>
     </div>
@@ -149,6 +149,29 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
         {title}
       </div>
       {children}
+    </div>
+  )
+}
+
+function ChartSkeleton() {
+  return (
+    <div style={{ height: 220, display: 'flex', flexDirection: 'column', gap: 8, justifyContent: 'flex-end', paddingBottom: 4 }}>
+      {/* Simulated bars that pulse — gives chart-like spatial context */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 160, padding: '0 2px' }}>
+        {[0.45, 0.7, 0.55, 0.85, 0.6, 0.9, 0.5, 0.75, 0.65, 0.8, 0.55, 0.7].map((h, i) => (
+          <div key={i} style={{
+            flex: 1,
+            height: `${h * 100}%`,
+            background: 'rgba(0,0,0,0.055)',
+            borderRadius: 3,
+            backgroundImage: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%)',
+            backgroundSize: '200% 100%',
+            animation: `shimmer 1.6s ease-in-out ${i * 0.06}s infinite`,
+          }} />
+        ))}
+      </div>
+      {/* Baseline */}
+      <div style={{ height: 1, background: 'rgba(0,0,0,0.06)', margin: '0 2px' }} />
     </div>
   )
 }

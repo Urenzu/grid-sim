@@ -54,6 +54,16 @@ html, body, #root {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
+/* ── Animations ───────────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 .glass-sm {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(14px);

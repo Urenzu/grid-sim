@@ -150,27 +150,41 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
     const path = d3.geoPath().projection(proj)
     const pos  = S.current.pos
 
+    // RAF-batch DOM attribute updates during zoom/drag.
+    // scene.attr('transform') is immediate (enables panning), but the per-element
+    // size updates are throttled to one batch per animation frame — reducing
+    // SVG DOM mutations from hundreds/second to 60/second during fast drag.
+    let pendingZoomK = 1
+    let zoomRafId    = 0
+    function flushZoomSizes() {
+      const k = pendingZoomK
+      scene.selectAll<SVGCircleElement, unknown>('circle.ba-dot')
+        .attr('r', 5 / k).attr('stroke-width', 1.2 / k)
+      scene.selectAll<SVGCircleElement, unknown>('circle.ba-hit')
+        .attr('r', 18 / k)
+      scene.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-label')
+        .attr('font-size', 7 / k)
+        .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - 10 / k : 0 })
+      scene.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-name')
+        .attr('font-size', 5.5 / k)
+        .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] + 16 / k : 0 })
+    }
+
     const scene = svg.append('g')
+      .style('will-change', 'transform')
+      .style('transform-origin', '0 0')
     svg.call(
       d3.zoom<SVGSVGElement, unknown>()
         .scaleExtent([0.5, 12])
         .on('zoom', e => {
           S.current.transform = e.transform
-          scene.attr('transform', e.transform.toString())
-          const k = e.transform.k
-          // Keep visual sizes constant — divide SVG attributes by zoom scale
-          scene.selectAll<SVGCircleElement, unknown>('circle.ba-dot')
-            .attr('r', 5 / k).attr('stroke-width', 1.2 / k)
-          scene.selectAll<SVGCircleElement, unknown>('circle.ba-hit')
-            .attr('r', 18 / k)
-          scene.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-label')
-            .attr('font-size', 7 / k)
-            .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] - 10 / k : 0 })
-          scene.selectAll<SVGTextElement, (typeof BA_DEFS)[number]>('text.ba-name')
-            .attr('font-size', 5.5 / k)
-            .attr('y', ([id]) => { const p = pos.get(id); return p ? p[1] + 16 / k : 0 })
+          const { x, y, k: kv } = e.transform
+          scene.style('transform', `translate(${x}px,${y}px) scale(${kv})`) // CSS — compositor thread
+          pendingZoomK = kv
           const el = document.getElementById('stat-zoom')
           if (el) el.textContent = e.transform.k.toFixed(1) + '\u00d7'
+          cancelAnimationFrame(zoomRafId)
+          zoomRafId = requestAnimationFrame(flushZoomSizes)
         })
     ).on('dblclick.zoom', null)
     svg.on('click', () => onBASelect(null))
