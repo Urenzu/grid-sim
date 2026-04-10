@@ -23,3 +23,6 @@ app/dist-ssr/
 # Project-local scratch files
 summary.md
 .history/
+
+# Misc
+.claude/

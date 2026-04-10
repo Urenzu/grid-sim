@@ -9,6 +9,43 @@ use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 
+// ── Analytics output ──────────────────────────────────────────────────────
+#[derive(Serialize, Clone)]
+pub struct BaAnalytics {
+    ba:               String,
+    label:            String,
+    #[serde(rename = "totalMw")]
+    total_mw:         f64,
+    #[serde(rename = "carbonIntensity")]
+    carbon_intensity: f64,
+    #[serde(rename = "renewablePct")]
+    renewable_pct:    f64,
+    #[serde(rename = "cleanPct")]
+    clean_pct:        f64,
+    #[serde(rename = "dominantFuel")]
+    dominant_fuel:    String,
+}
+
+#[derive(Serialize, Clone, Default)]
+pub struct GridStats {
+    #[serde(rename = "totalMw")]
+    total_mw:         f64,
+    #[serde(rename = "carbonIntensity")]
+    carbon_intensity: f64,
+    #[serde(rename = "renewablePct")]
+    renewable_pct:    f64,
+    #[serde(rename = "cleanPct")]
+    clean_pct:        f64,
+    #[serde(rename = "baCount")]
+    ba_count:         usize,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AnalyticsResponse {
+    rankings: Vec<BaAnalytics>,
+    grid:     GridStats,
+}
+
 /// EIA sometimes returns numeric values as JSON strings (e.g. "918" instead of 918).
 fn deserialize_opt_f64<'de, D>(d: D) -> Result<Option<f64>, D::Error>
 where
@@ -587,6 +624,114 @@ async fn health_handler() -> &'static str {
     "ok"
 }
 
+/// Use Polars to compute cross-BA rankings from a generation snapshot.
+fn compute_ba_analytics(gen: &[BaGenData]) -> Result<AnalyticsResponse> {
+    use polars::prelude::*;
+
+    if gen.is_empty() {
+        return Ok(AnalyticsResponse { rankings: vec![], grid: GridStats::default() });
+    }
+
+    let ba_label: HashMap<&str, &str> = BA_LABELS.iter().cloned().collect();
+
+    // Pre-compute per-BA scalar metrics
+    let bas:         Vec<&str> = gen.iter().map(|b| b.ba.as_str()).collect();
+    let total_mws:   Vec<f64>  = gen.iter().map(|b| b.total_mw).collect();
+    let intensities: Vec<f64>  = gen.iter().map(|b| carbon_intensity(&b.fuels)).collect();
+    let renew_pcts:  Vec<f64>  = gen.iter().map(|b| {
+        let r: f64 = b.fuels.iter()
+            .filter(|f| f.fuel == "wind" || f.fuel == "solar")
+            .map(|f| f.mw).sum();
+        if b.total_mw > 0.0 { r / b.total_mw * 100.0 } else { 0.0 }
+    }).collect();
+    let clean_pcts: Vec<f64> = gen.iter().map(|b| {
+        let c: f64 = b.fuels.iter()
+            .filter(|f| matches!(f.fuel.as_str(), "wind" | "solar" | "hydro" | "nuclear"))
+            .map(|f| f.mw).sum();
+        if b.total_mw > 0.0 { c / b.total_mw * 100.0 } else { 0.0 }
+    }).collect();
+
+    // Build DataFrame — Polars handles sort and weighted aggregation
+    let df = DataFrame::new(vec![
+        Series::new("ba".into(),            bas.as_slice()),
+        Series::new("total_mw".into(),      total_mws.as_slice()),
+        Series::new("intensity".into(),     intensities.as_slice()),
+        Series::new("renewable_pct".into(), renew_pcts.as_slice()),
+        Series::new("clean_pct".into(),     clean_pcts.as_slice()),
+    ])?;
+
+    // Grid-wide weighted averages via lazy expressions
+    let grid_df = df.clone().lazy()
+        .select([
+            col("total_mw").sum().alias("total_mw"),
+            (col("total_mw") * col("intensity")).sum().alias("w_ci"),
+            (col("total_mw") * col("renewable_pct")).sum().alias("w_renew"),
+            (col("total_mw") * col("clean_pct")).sum().alias("w_clean"),
+        ])
+        .collect()?;
+
+    let total_mw_sum: f64 = grid_df["total_mw"].f64()?.get(0).unwrap_or(0.0);
+    let w_ci:         f64 = grid_df["w_ci"].f64()?.get(0).unwrap_or(0.0);
+    let w_renew:      f64 = grid_df["w_renew"].f64()?.get(0).unwrap_or(0.0);
+    let w_clean:      f64 = grid_df["w_clean"].f64()?.get(0).unwrap_or(0.0);
+
+    let div = |n: f64| if total_mw_sum > 0.0 { n / total_mw_sum } else { 0.0 };
+    let grid = GridStats {
+        total_mw:         total_mw_sum,
+        carbon_intensity: div(w_ci),
+        renewable_pct:    div(w_renew),
+        clean_pct:        div(w_clean),
+        ba_count:         gen.len(),
+    };
+
+    // Sort by total_mw descending for default ranking order
+    let sorted = df.sort(
+        ["total_mw"],
+        SortMultipleOptions::default().with_order_descending(true),
+    )?;
+
+    let bas_col   = sorted["ba"].str()?;
+    let mw_col    = sorted["total_mw"].f64()?;
+    let ci_col    = sorted["intensity"].f64()?;
+    let renew_col = sorted["renewable_pct"].f64()?;
+    let clean_col = sorted["clean_pct"].f64()?;
+
+    let rankings: Vec<BaAnalytics> = (0..sorted.height())
+        .filter_map(|i| {
+            let ba       = bas_col.get(i)?;
+            let label    = ba_label.get(ba).copied().unwrap_or(ba).to_string();
+            let dominant = gen.iter().find(|b| b.ba == ba)?.dominant_fuel.clone();
+            Some(BaAnalytics {
+                ba:               ba.to_string(),
+                label,
+                total_mw:         mw_col.get(i).unwrap_or(0.0),
+                carbon_intensity: ci_col.get(i).unwrap_or(0.0),
+                renewable_pct:    renew_col.get(i).unwrap_or(0.0),
+                clean_pct:        clean_col.get(i).unwrap_or(0.0),
+                dominant_fuel:    dominant,
+            })
+        })
+        .collect();
+
+    Ok(AnalyticsResponse { rankings, grid })
+}
+
+async fn analytics_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<AnalyticsResponse>, StatusCode> {
+    let gen = fetch_generation(&state).await.map_err(|e| {
+        tracing::error!("analytics gen fetch failed: {e:#}");
+        StatusCode::BAD_GATEWAY
+    })?;
+
+    let result = compute_ba_analytics(&gen).map_err(|e| {
+        tracing::error!("analytics compute failed: {e:#}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Json(result))
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt::init();
@@ -632,6 +777,7 @@ async fn main() -> Result<()> {
         .route("/api/carbon",      get(carbon_handler))
         .route("/api/history",     get(history_handler))
         .route("/api/duck-curve",  get(duck_curve_handler))
+        .route("/api/analytics",   get(analytics_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

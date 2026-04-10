@@ -47,5 +47,26 @@ export interface DuckPoint {
   intensity:  number
 }
 
+export interface BaRanking {
+  ba:               string
+  label:            string
+  totalMw:          number
+  carbonIntensity:  number
+  renewablePct:     number
+  cleanPct:         number
+  dominantFuel:     string
+}
+
+export interface AnalyticsData {
+  rankings: BaRanking[]
+  grid: {
+    totalMw:         number
+    carbonIntensity: number
+    renewablePct:    number
+    cleanPct:        number
+    baCount:         number
+  }
+}
+
 export type Mode     = 'flow' | 'generation' | 'carbon'
 export type LayerKey = 'arcs' | 'particles' | 'nuclear' | 'hydro' | 'wind' | 'solar' | 'gas' | 'coal'

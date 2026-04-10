@@ -251,7 +251,7 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
               layerArcs, layerParticles, layerNuclear, layerHydro,
               layerWind, layerSolar, layerGas, layerCoal,
               genMap, carbonMap, arcData, particles, plantPts } = ss
-      const activeBA = hoveredBA ?? selBA
+      void (hoveredBA ?? selBA) // activeBA — reserved for future use
 
       // Advance per-BA hover lerp (smooth 6-frame transition)
       for (const { id } of ss.baList) {
