@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import type { BaCarbonData } from '../../types'
 
-const W = 520, H = 220, M = { top: 8, right: 12, bottom: 28, left: 60 }
+const W = 660, H = 340, M = { top: 8, right: 16, bottom: 32, left: 70 }
 
 // Show top N BAs by total MW to keep it readable
-const MAX_BAS = 14
+const MAX_BAS = 16
 
 interface Props { carbonData: BaCarbonData[] }
 
@@ -40,13 +40,13 @@ export function BaHourHeatmap({ carbonData }: Props) {
       .data(sorted)
       .join('text')
       .attr('class', 'ba-label')
-      .attr('x', -6)
+      .attr('x', -8)
       .attr('y', (_, i) => i * cellH + cellH / 2)
       .attr('text-anchor', 'end')
       .attr('dominant-baseline', 'middle')
-      .attr('font-size', 8)
+      .attr('font-size', 11)
       .attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('fill', 'rgba(0,0,0,0.45)')
+      .attr('fill', 'rgba(0,0,0,0.5)')
       .text(d => d.ba)
 
     // Cells
@@ -67,12 +67,12 @@ export function BaHourHeatmap({ carbonData }: Props) {
       .data(sorted)
       .join('text')
       .attr('class', 'val')
-      .attr('x', 8)
+      .attr('x', 10)
       .attr('y', (_, i) => i * cellH + cellH / 2)
       .attr('dominant-baseline', 'middle')
-      .attr('font-size', 8)
+      .attr('font-size', 10)
       .attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('fill', d => d.intensity > 400 ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.55)')
+      .attr('fill', 'rgba(0,0,0,0.68)')
       .text(d => `${Math.round(d.intensity)} g/kWh`)
 
     // MW label
@@ -80,22 +80,22 @@ export function BaHourHeatmap({ carbonData }: Props) {
       .data(sorted)
       .join('text')
       .attr('class', 'mw')
-      .attr('x', d => Math.max(4, cellW * Math.sqrt(d.totalMw / (sorted[0]?.totalMw ?? 1))) + 6)
+      .attr('x', d => Math.max(4, cellW * Math.sqrt(d.totalMw / (sorted[0]?.totalMw ?? 1))) + 8)
       .attr('y', (_, i) => i * cellH + cellH / 2)
       .attr('dominant-baseline', 'middle')
-      .attr('font-size', 7)
+      .attr('font-size', 10)
       .attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('fill', 'rgba(0,0,0,0.25)')
+      .attr('fill', 'rgba(0,0,0,0.3)')
       .text(d => `${(d.totalMw / 1000).toFixed(1)} GW`)
 
     // X axis label
     g.append('text')
-      .attr('x', iw / 2).attr('y', ih + 20)
+      .attr('x', iw / 2).attr('y', ih + 24)
       .attr('text-anchor', 'middle')
-      .attr('font-size', 8).attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('fill', 'rgba(0,0,0,0.25)')
-      .text('Bar width ∝ √(generation output) · Color = carbon intensity')
+      .attr('font-size', 10).attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('fill', 'rgba(0,0,0,0.28)')
+      .text('bar width ∝ √(generation output)  ·  color = carbon intensity')
   }, [carbonData])
 
-  return <svg ref={svgRef} style={{ width: '100%', height: H, overflow: 'visible' }} viewBox={`0 0 ${W} ${H}`} />
+  return <svg ref={svgRef} style={{ width: '100%', height: 'auto', overflow: 'visible' }} viewBox={`0 0 ${W} ${H}`} />
 }

@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useAnalyticsData } from '../hooks/useAnalyticsData'
 import { FUEL_COLORS } from '../data/ba'
+import { BaScatter } from './charts/BaScatter'
+import { BaHourHeatmap } from './charts/BaHourHeatmap'
 import type { BaRanking } from '../types'
 
 type SortKey = 'capacity' | 'carbon' | 'renewables' | 'clean'
+type ViewKey  = 'list' | 'scatter' | 'heatmap'
 
 const SORTS: { id: SortKey; label: string }[] = [
   { id: 'capacity',   label: 'capacity'   },
@@ -12,54 +15,48 @@ const SORTS: { id: SortKey; label: string }[] = [
   { id: 'clean',      label: 'clean'      },
 ]
 
+const VIEWS: { id: ViewKey; label: string }[] = [
+  { id: 'list',    label: 'list'    },
+  { id: 'scatter', label: 'scatter' },
+  { id: 'heatmap', label: 'heatmap' },
+]
+
+// ── formatting ────────────────────────────────────────────────────────────
+
 function fmtMw(mw: number): string {
-  if (mw >= 1000) return `${(mw / 1000).toFixed(1)} GW`
-  return `${Math.round(mw)} MW`
+  return mw >= 1000 ? `${(mw / 1000).toFixed(1)} GW` : `${Math.round(mw)} MW`
 }
+function fmtPct(v: number): string { return `${v.toFixed(1)}%` }
+function fmtCi(v: number): string  { return `${Math.round(v)} g/kWh` }
 
-function fmtPct(v: number): string {
-  return `${v.toFixed(1)}%`
-}
-
-function fmtCi(v: number): string {
-  return `${Math.round(v)} g/kWh`
-}
-
-// Carbon intensity color: green (clean) → red (dirty), max ~900 g/kWh
+// green → red across 0–900 g/kWh
 function ciColor(intensity: number): string {
   const t = Math.min(intensity / 900, 1)
-  const r = Math.round(34 + t * (220 - 34))
+  const r = Math.round(34  + t * (220 - 34))
   const g = Math.round(197 - t * (197 - 38))
   const b = Math.round(94  - t * (94  - 38))
   return `rgb(${r},${g},${b})`
 }
 
+// ── sort helpers ──────────────────────────────────────────────────────────
+
 function sortedRankings(rankings: BaRanking[], key: SortKey): BaRanking[] {
   return [...rankings].sort((a, b) => {
     switch (key) {
-      case 'capacity':   return b.totalMw         - a.totalMw
-      case 'carbon':     return b.carbonIntensity  - a.carbonIntensity
-      case 'renewables': return b.renewablePct     - a.renewablePct
-      case 'clean':      return b.cleanPct         - a.cleanPct
+      case 'capacity':   return b.totalMw        - a.totalMw
+      case 'carbon':     return b.carbonIntensity - a.carbonIntensity
+      case 'renewables': return b.renewablePct    - a.renewablePct
+      case 'clean':      return b.cleanPct        - a.cleanPct
     }
   })
 }
 
-function metricValue(r: BaRanking, key: SortKey): { raw: number; label: string } {
+function metricOf(r: BaRanking, key: SortKey): { raw: number; label: string } {
   switch (key) {
     case 'capacity':   return { raw: r.totalMw,        label: fmtMw(r.totalMw)         }
     case 'carbon':     return { raw: r.carbonIntensity, label: fmtCi(r.carbonIntensity) }
     case 'renewables': return { raw: r.renewablePct,    label: fmtPct(r.renewablePct)   }
     case 'clean':      return { raw: r.cleanPct,        label: fmtPct(r.cleanPct)       }
-  }
-}
-
-function barColor(r: BaRanking, key: SortKey): string {
-  switch (key) {
-    case 'capacity':   return FUEL_COLORS[r.dominantFuel] ?? '#6b7280'
-    case 'carbon':     return ciColor(r.carbonIntensity)
-    case 'renewables': return '#0891b2'
-    case 'clean':      return '#059669'
   }
 }
 
@@ -72,53 +69,121 @@ function maxMetric(rankings: BaRanking[], key: SortKey): number {
   }
 }
 
-interface SummaryTileProps {
-  label: string
-  value: string
-  sub?:  string
-  color?: string
+function barColor(r: BaRanking, key: SortKey): string {
+  switch (key) {
+    case 'capacity':   return FUEL_COLORS[r.dominantFuel] ?? '#6b7280'
+    case 'carbon':     return ciColor(r.carbonIntensity)
+    case 'renewables': return '#0891b2'
+    case 'clean':      return '#059669'
+  }
 }
 
-function SummaryTile({ label, value, sub, color }: SummaryTileProps) {
+// ── sub-components ────────────────────────────────────────────────────────
+
+function PillToggle<T extends string>({
+  options, value, onChange,
+}: {
+  options: { id: T; label: string }[]
+  value: T
+  onChange: (v: T) => void
+}) {
+  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
   return (
     <div style={{
-      flex: 1, minWidth: 120,
-      padding: '14px 18px',
-      background: 'rgba(255,255,255,0.7)',
-      border: '1px solid rgba(0,0,0,0.07)',
-      borderRadius: 10,
+      display: 'flex', gap: 4,
+      background: 'rgba(0,0,0,0.04)',
+      borderRadius: 999, padding: 4,
+      width: 'fit-content',
     }}>
-      <div style={{
-        fontFamily: 'var(--font-mono)', fontSize: 8,
-        letterSpacing: '0.18em', textTransform: 'uppercase',
-        color: 'rgba(0,0,0,0.3)', marginBottom: 6,
-      }}>
-        {label}
-      </div>
-      <div style={{
-        fontFamily: 'var(--font-mono)', fontSize: 20,
-        fontWeight: 600, color: color ?? 'rgba(0,0,0,0.82)',
-        lineHeight: 1,
-      }}>
-        {value}
-      </div>
-      {sub && (
-        <div style={{
-          fontFamily: 'var(--font-mono)', fontSize: 9,
-          color: 'rgba(0,0,0,0.28)', marginTop: 4,
+      {options.map(o => (
+        <button key={o.id} onClick={() => onChange(o.id)} style={{
+          background:    value === o.id ? 'white' : 'transparent',
+          border:        value === o.id ? '1px solid rgba(0,0,0,0.09)' : '1px solid transparent',
+          borderRadius:  999,
+          color:         value === o.id ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.32)',
+          ...mono, fontSize: 9, letterSpacing: '0.16em',
+          textTransform: 'uppercase', padding: '6px 16px',
+          cursor: 'pointer',
+          boxShadow: value === o.id ? '0 1px 4px rgba(0,0,0,0.07)' : 'none',
+          transition: 'all 0.14s ease',
         }}>
-          {sub}
-        </div>
-      )}
+          {o.label}
+        </button>
+      ))}
     </div>
   )
 }
 
+
+// Mini stacked fuel bar — replaces the plain color dot in list rows
+function FuelMiniBar({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: number }) {
+  const sorted = [...fuels].sort((a, b) => b.mw - a.mw)
+  return (
+    <div style={{
+      display: 'flex', width: 52, height: 5,
+      borderRadius: 999, overflow: 'hidden', flexShrink: 0,
+    }}>
+      {sorted.map(({ fuel, mw }) => (
+        <div key={fuel} style={{
+          width: `${(mw / totalMw) * 100}%`,
+          background: FUEL_COLORS[fuel] ?? '#6b7280',
+        }} />
+      ))}
+    </div>
+  )
+}
+
+// Expanded fuel breakdown shown below a clicked row
+function FuelDetail({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: number }) {
+  const sorted = [...fuels].sort((a, b) => b.mw - a.mw)
+  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
+  return (
+    <div style={{
+      padding: '10px 18px 14px 108px',
+      borderTop: '1px solid rgba(0,0,0,0.04)',
+    }}>
+      {sorted.map(({ fuel, mw }) => {
+        const pct = totalMw > 0 ? (mw / totalMw) * 100 : 0
+        const fc  = FUEL_COLORS[fuel] ?? '#6b7280'
+        return (
+          <div key={fuel} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: fc, flexShrink: 0 }} />
+            <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.4)', width: 48 }}>{fuel}</div>
+            <div style={{ flex: 1, height: 4, background: 'rgba(0,0,0,0.05)', borderRadius: 999, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${pct}%`, background: fc, borderRadius: 999 }} />
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.38)', width: 48, textAlign: 'right' }}>
+              {fmtMw(mw)}
+            </div>
+            <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.22)', width: 30, textAlign: 'right' }}>
+              {pct.toFixed(0)}%
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── main component ────────────────────────────────────────────────────────
+
 export function Analytics() {
   const { analytics, loading } = useAnalyticsData()
-  const [sort, setSort] = useState<SortKey>('capacity')
+  const [sort,       setSort]       = useState<SortKey>('capacity')
+  const [view,       setView]       = useState<ViewKey>('list')
+  const [expandedBa, setExpandedBa] = useState<string | null>(null)
 
   const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
+
+  // Derive BaCarbonData[] for the heatmap from analytics rankings
+  const carbonData = useMemo(
+    () => analytics?.rankings.map(r => ({
+      ba:        r.ba,
+      intensity: r.carbonIntensity,
+      totalMw:   r.totalMw,
+    })) ?? [],
+    [analytics],
+  )
 
   if (loading || !analytics) {
     return (
@@ -134,155 +199,150 @@ export function Analytics() {
     )
   }
 
-  const { grid, rankings } = analytics
-  const ranked  = sortedRankings(rankings, sort)
-  const maxVal  = maxMetric(rankings, sort)
+  const { rankings } = analytics
+  const ranked = sortedRankings(rankings, sort)
+  const maxVal = maxMetric(rankings, sort)
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: '#f7f7f7',
-      overflowY: 'auto',
-    }}>
-      <div style={{
-        maxWidth: 860, margin: '0 auto',
-        padding: '40px 24px 80px',
-      }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#f7f7f7', overflowY: 'auto' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px 80px' }}>
 
         {/* Header */}
         <div style={{
           ...mono, fontSize: 10, letterSpacing: '0.22em',
-          textTransform: 'uppercase', color: 'rgba(0,0,0,0.35)',
-          marginBottom: 24,
+          textTransform: 'uppercase', color: 'rgba(0,0,0,0.3)',
+          marginBottom: 22,
         }}>
-          grid analytics · {grid.baCount} balancing authorities
+          {rankings.length} balancing authorities
         </div>
 
-        {/* Summary tiles */}
-        <div style={{ display: 'flex', gap: 10, marginBottom: 28, flexWrap: 'wrap' }}>
-          <SummaryTile
-            label="total generation"
-            value={fmtMw(grid.totalMw)}
-            sub="live snapshot"
-          />
-          <SummaryTile
-            label="carbon intensity"
-            value={fmtCi(grid.carbonIntensity)}
-            sub="weighted avg"
-            color={ciColor(grid.carbonIntensity)}
-          />
-          <SummaryTile
-            label="renewables"
-            value={fmtPct(grid.renewablePct)}
-            sub="wind + solar"
-            color="#0891b2"
-          />
-          <SummaryTile
-            label="clean energy"
-            value={fmtPct(grid.cleanPct)}
-            sub="incl. nuclear + hydro"
-            color="#059669"
-          />
+        {/* View + sort toggles */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+          <PillToggle options={VIEWS} value={view} onChange={v => { setView(v); setExpandedBa(null) }} />
+          {view === 'list' && (
+            <PillToggle options={SORTS} value={sort} onChange={setSort} />
+          )}
         </div>
 
-        {/* Sort selector */}
-        <div style={{
-          display: 'flex', gap: 4, marginBottom: 18,
-          background: 'rgba(0,0,0,0.04)',
-          borderRadius: 999, padding: 4,
-          width: 'fit-content',
-        }}>
-          {SORTS.map(s => (
-            <button key={s.id} onClick={() => setSort(s.id)} style={{
-              background: sort === s.id ? 'white' : 'transparent',
-              border: sort === s.id ? '1px solid rgba(0,0,0,0.1)' : '1px solid transparent',
-              borderRadius: 999,
-              color: sort === s.id ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.35)',
-              ...mono, fontSize: 9, letterSpacing: '0.16em',
-              textTransform: 'uppercase', padding: '6px 16px',
-              cursor: 'pointer',
-              boxShadow: sort === s.id ? '0 1px 4px rgba(0,0,0,0.07)' : 'none',
-              transition: 'all 0.14s ease',
-            }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
+        {/* ── List view ──────────────────────────────────────────────── */}
+        {view === 'list' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.75)',
+            border: '1px solid rgba(0,0,0,0.07)',
+            borderRadius: 12, overflow: 'hidden',
+          }}>
+            {ranked.map((r, i) => {
+              const { raw, label } = metricOf(r, sort)
+              const barW    = maxVal > 0 ? (raw / maxVal) * 100 : 0
+              const isOpen  = expandedBa === r.ba
+              const isLast  = i === ranked.length - 1
 
-        {/* Rankings list */}
-        <div style={{
-          background: 'rgba(255,255,255,0.75)',
-          border: '1px solid rgba(0,0,0,0.07)',
-          borderRadius: 12,
-          overflow: 'hidden',
-        }}>
-          {ranked.map((r, i) => {
-            const { raw, label } = metricValue(r, sort)
-            const barW = maxVal > 0 ? (raw / maxVal) * 100 : 0
-            const fuelColor = FUEL_COLORS[r.dominantFuel] ?? '#6b7280'
-
-            return (
-              <div key={r.ba} style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '11px 18px',
-                borderBottom: i < ranked.length - 1 ? '1px solid rgba(0,0,0,0.05)' : 'none',
-              }}>
-
-                {/* Rank */}
-                <div style={{
-                  ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)',
-                  width: 22, textAlign: 'right', flexShrink: 0,
+              return (
+                <div key={r.ba} style={{
+                  borderBottom: !isLast || isOpen ? '1px solid rgba(0,0,0,0.05)' : 'none',
                 }}>
-                  {i + 1}
-                </div>
+                  {/* Row */}
+                  <div
+                    onClick={() => setExpandedBa(isOpen ? null : r.ba)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14,
+                      padding: '10px 18px',
+                      cursor: 'pointer',
+                      background: isOpen ? 'rgba(0,0,0,0.015)' : 'transparent',
+                      transition: 'background 0.1s ease',
+                    }}
+                  >
+                    {/* Rank */}
+                    <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.18)', width: 22, textAlign: 'right', flexShrink: 0 }}>
+                      {i + 1}
+                    </div>
 
-                {/* Fuel dot */}
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: fuelColor, flexShrink: 0,
-                }} />
+                    {/* Mini fuel bar */}
+                    <FuelMiniBar fuels={r.fuels} totalMw={r.totalMw} />
 
-                {/* BA name */}
-                <div style={{ flex: '0 0 52px' }}>
-                  <div style={{ ...mono, fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.78)' }}>
-                    {r.ba}
-                  </div>
-                </div>
+                    {/* BA ticker */}
+                    <div style={{ flex: '0 0 50px' }}>
+                      <div style={{ ...mono, fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.76)' }}>
+                        {r.ba}
+                      </div>
+                    </div>
 
-                {/* Label */}
-                <div style={{
-                  ...mono, fontSize: 9, color: 'rgba(0,0,0,0.35)',
-                  flex: '1 1 160px', overflow: 'hidden',
-                  textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {r.label}
-                </div>
-
-                {/* Bar + value */}
-                <div style={{ flex: '2 1 200px', display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{
-                    flex: 1, height: 5, background: 'rgba(0,0,0,0.06)', borderRadius: 999,
-                    overflow: 'hidden',
-                  }}>
+                    {/* Full label */}
                     <div style={{
-                      height: '100%', borderRadius: 999,
-                      width: `${barW}%`,
-                      background: barColor(r, sort),
-                      transition: 'width 0.3s ease',
-                    }} />
-                  </div>
-                  <div style={{
-                    ...mono, fontSize: 10, color: 'rgba(0,0,0,0.55)',
-                    width: 72, textAlign: 'right', flexShrink: 0,
-                  }}>
-                    {label}
-                  </div>
-                </div>
+                      ...mono, fontSize: 9, color: 'rgba(0,0,0,0.32)',
+                      flex: '1 1 150px', overflow: 'hidden',
+                      textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {r.label}
+                    </div>
 
-              </div>
-            )
-          })}
-        </div>
+                    {/* Metric bar + value */}
+                    <div style={{ flex: '2 1 200px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        flex: 1, height: 5, background: 'rgba(0,0,0,0.06)',
+                        borderRadius: 999, overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          height: '100%', borderRadius: 999,
+                          width: `${barW}%`,
+                          background: barColor(r, sort),
+                          transition: 'width 0.3s ease',
+                        }} />
+                      </div>
+                      <div style={{
+                        ...mono, fontSize: 10, color: 'rgba(0,0,0,0.5)',
+                        width: 72, textAlign: 'right', flexShrink: 0,
+                      }}>
+                        {label}
+                      </div>
+                    </div>
+
+                    {/* Expand indicator */}
+                    <div style={{
+                      ...mono, fontSize: 9, color: 'rgba(0,0,0,0.18)',
+                      width: 10, flexShrink: 0,
+                      transform: isOpen ? 'rotate(90deg)' : 'none',
+                      transition: 'transform 0.15s ease',
+                    }}>
+                      ›
+                    </div>
+                  </div>
+
+                  {/* Expanded fuel detail */}
+                  {isOpen && <FuelDetail fuels={r.fuels} totalMw={r.totalMw} />}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── Scatter view ───────────────────────────────────────────── */}
+        {view === 'scatter' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.75)',
+            border: '1px solid rgba(0,0,0,0.07)',
+            borderRadius: 12, padding: '20px 16px 12px',
+          }}>
+            <div style={{ ...mono, fontSize: 11, color: 'rgba(0,0,0,0.3)', marginBottom: 16 }}>
+              carbon intensity vs clean energy &nbsp;·&nbsp; circle size ∝ √(generation)
+            </div>
+            <BaScatter rankings={rankings} />
+          </div>
+        )}
+
+        {/* ── Heatmap view ───────────────────────────────────────────── */}
+        {view === 'heatmap' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.75)',
+            border: '1px solid rgba(0,0,0,0.07)',
+            borderRadius: 12, padding: '20px 16px 12px',
+          }}>
+            <div style={{ ...mono, fontSize: 11, color: 'rgba(0,0,0,0.3)', marginBottom: 16 }}>
+              top BAs by output &nbsp;·&nbsp; bar width ∝ √(generation) &nbsp;·&nbsp; color = carbon intensity
+            </div>
+            <BaHourHeatmap carbonData={carbonData} />
+          </div>
+        )}
 
       </div>
     </div>

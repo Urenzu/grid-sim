@@ -55,6 +55,7 @@ export interface BaRanking {
   renewablePct:     number
   cleanPct:         number
   dominantFuel:     string
+  fuels:            Array<{ fuel: string; mw: number }>
 }
 
 export interface AnalyticsData {

@@ -24,6 +24,7 @@ pub struct BaAnalytics {
     clean_pct:        f64,
     #[serde(rename = "dominantFuel")]
     dominant_fuel:    String,
+    fuels:            Vec<FuelEntry>,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -701,6 +702,9 @@ fn compute_ba_analytics(gen: &[BaGenData]) -> Result<AnalyticsResponse> {
             let ba       = bas_col.get(i)?;
             let label    = ba_label.get(ba).copied().unwrap_or(ba).to_string();
             let dominant = gen.iter().find(|b| b.ba == ba)?.dominant_fuel.clone();
+            let fuels = gen.iter().find(|b| b.ba == ba)
+                .map(|b| b.fuels.clone())
+                .unwrap_or_default();
             Some(BaAnalytics {
                 ba:               ba.to_string(),
                 label,
@@ -709,11 +713,54 @@ fn compute_ba_analytics(gen: &[BaGenData]) -> Result<AnalyticsResponse> {
                 renewable_pct:    renew_col.get(i).unwrap_or(0.0),
                 clean_pct:        clean_col.get(i).unwrap_or(0.0),
                 dominant_fuel:    dominant,
+                fuels,
             })
         })
         .collect();
 
     Ok(AnalyticsResponse { rankings, grid })
+}
+
+#[derive(Deserialize)]
+struct CompareParams {
+    bas: String, // comma-separated BA codes
+}
+
+async fn compare_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CompareParams>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let requested: std::collections::HashSet<&str> =
+        params.bas.split(',').map(str::trim).collect();
+
+    let gen = fetch_generation(&state).await.map_err(|e| {
+        tracing::error!("compare gen fetch: {e:#}");
+        StatusCode::BAD_GATEWAY
+    })?;
+    let result = compute_ba_analytics(&gen).map_err(|e| {
+        tracing::error!("compare compute: {e:#}");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let g = &result.grid;
+    let entries: Vec<serde_json::Value> = result.rankings.iter()
+        .filter(|r| requested.contains(r.ba.as_str()))
+        .map(|r| serde_json::json!({
+            "ba":                   r.ba,
+            "label":                r.label,
+            "totalMw":              r.total_mw,
+            "carbonIntensity":      r.carbon_intensity,
+            "renewablePct":         r.renewable_pct,
+            "cleanPct":             r.clean_pct,
+            "dominantFuel":         r.dominant_fuel,
+            "fuels":                r.fuels,
+            "deltaCarbonIntensity": r.carbon_intensity - g.carbon_intensity,
+            "deltaRenewablePct":    r.renewable_pct    - g.renewable_pct,
+            "deltaCleanPct":        r.clean_pct        - g.clean_pct,
+        }))
+        .collect();
+
+    Ok(Json(serde_json::json!({ "entries": entries, "grid": g })))
 }
 
 async fn analytics_handler(
@@ -777,7 +824,8 @@ async fn main() -> Result<()> {
         .route("/api/carbon",      get(carbon_handler))
         .route("/api/history",     get(history_handler))
         .route("/api/duck-curve",  get(duck_curve_handler))
-        .route("/api/analytics",   get(analytics_handler))
+        .route("/api/analytics",         get(analytics_handler))
+        .route("/api/analytics/compare", get(compare_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
