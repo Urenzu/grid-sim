@@ -80,7 +80,7 @@ export function drawTimeAxis(
     .call(ax => ax.select('.domain').remove())
     .call(ax => ax.selectAll('.tick line').remove())
     .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
-      .attr('font-size', 8)
+      .attr('font-size', 10)
       .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('fill', d => {
         // Bold the day-name ticks on the 48-72h range
@@ -160,7 +160,7 @@ export function drawYAxis(
     .call(ax => ax.select('.domain').remove())
     .call(ax => ax.selectAll('.tick line').attr('stroke', 'rgba(0,0,0,0.07)'))
     .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
-      .attr('font-size', 8)
+      .attr('font-size', 10)
       .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('fill', 'rgba(0,0,0,0.35)')
     )

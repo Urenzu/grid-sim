@@ -1,0 +1,17 @@
+[package]
+name = "backfill"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "backfill"
+path = "src/main.rs"
+
+[dependencies]
+reqwest  = { version = "0.12", features = ["blocking", "json"] }
+serde    = { version = "1",    features = ["derive"] }
+serde_json = "1"
+anyhow   = "1"
+chrono   = "0.4"
+polars   = { version = "0.41", features = ["lazy", "parquet"] }
+dotenvy  = "0.15"

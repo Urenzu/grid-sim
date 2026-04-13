@@ -100,7 +100,7 @@ export function DuckCurve({ data }: Props) {
 
         const tip = tipRef.current!
         tip.innerHTML = `
-          <div style="font-size:8.5px;color:rgba(0,0,0,0.38);letter-spacing:0.08em;margin-bottom:7px">
+          <div style="font-size:10px;color:rgba(0,0,0,0.38);letter-spacing:0.04em;margin-bottom:7px">
             ${fmtTooltipTime(parseEiaPeriod(pt.period))}
           </div>
           ${SERIES.map(s => `

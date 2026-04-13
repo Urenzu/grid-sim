@@ -20,7 +20,7 @@ export function BaHourHeatmap({ carbonData }: Props) {
       .sort((a, b) => b.totalMw - a.totalMw)
       .slice(0, MAX_BAS)
 
-    const svg = d3.select(svgRef.current!).attr('width', W).attr('height', H)
+    const svg = d3.select(svgRef.current!)
     svg.selectAll('*').remove()
 
     const iw = W - M.left - M.right

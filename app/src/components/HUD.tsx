@@ -35,7 +35,7 @@ export function HUD({ data, error, loading }: Props) {
       }}>
         <span style={{
           fontFamily: 'var(--font-mono)',
-          fontSize: 9, letterSpacing: '0.26em',
+          fontSize: 10, letterSpacing: '0.18em',
           textTransform: 'uppercase',
           color: 'rgba(0,0,0,0.4)',
         }}>
@@ -75,8 +75,8 @@ function Badge({ children, accent }: { children: React.ReactNode; accent?: strin
     <div className="glass-sm" style={{
       padding: '4px 10px',
       fontFamily: 'var(--font-mono)',
-      fontSize: 8,
-      letterSpacing: '0.14em',
+      fontSize: 9,
+      letterSpacing: '0.12em',
       textTransform: 'uppercase' as const,
       color: accent ?? 'rgba(0,0,0,0.4)',
     }}>
@@ -98,9 +98,9 @@ function StatBadge({ label, value, accent, id }: {
     }}>
       <span style={{
         fontFamily: 'var(--font-mono)',
-        fontSize: 7, letterSpacing: '0.16em',
+        fontSize: 9, letterSpacing: '0.12em',
         textTransform: 'uppercase' as const,
-        color: 'rgba(0,0,0,0.3)',
+        color: 'rgba(0,0,0,0.32)',
       }}>
         {label}
       </span>

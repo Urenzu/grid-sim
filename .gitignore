@@ -1,6 +1,6 @@
 # Rust
 target/
-Cargo.lock
+# Cargo.lock is intentionally committed — binary workspace needs reproducible builds
 
 # Node / frontend
 node_modules/
@@ -11,6 +11,11 @@ app/dist-ssr/
 
 # Environment
 .env
+.env.*
+!.env.example
+
+# Runtime data — parquet files written by server/backfill at runtime
+data/
 
 # Editor
 .vscode/*

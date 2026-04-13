@@ -90,9 +90,9 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
                   {label}
                 </div>
                 <div style={{
-                  fontSize: 8, fontFamily: 'var(--font-mono)',
-                  letterSpacing: '0.18em',
-                  color: 'rgba(0,0,0,0.25)', marginTop: 2,
+                  fontSize: 9, fontFamily: 'var(--font-mono)',
+                  letterSpacing: '0.12em',
+                  color: 'rgba(0,0,0,0.28)', marginTop: 2,
                 }}>
                   {baId}
                 </div>
@@ -150,9 +150,8 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
                               {partnerLabel}
                             </div>
                             <div style={{
-                              fontFamily: 'var(--font-mono)', fontSize: 7,
-                              letterSpacing: '0.1em',
-                              color: 'rgba(0,0,0,0.25)',
+                              fontFamily: 'var(--font-mono)', fontSize: 9,
+                              color: 'rgba(0,0,0,0.28)',
                             }}>
                               {p.id}
                             </div>
@@ -229,9 +228,9 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
       fontFamily: 'var(--font-mono)',
-      fontSize: 7, letterSpacing: '0.2em',
+      fontSize: 9, letterSpacing: '0.14em',
       textTransform: 'uppercase',
-      color: 'rgba(0,0,0,0.25)',
+      color: 'rgba(0,0,0,0.28)',
       marginBottom: 8,
     }}>
       {children}
@@ -288,7 +287,7 @@ function FuelRow({ fuel, mw, total }: { fuel: string; mw: number; total: number 
           color: 'rgba(0,0,0,0.55)',
         }}>
           {fmtMW(mw)}{' '}
-          <span style={{ color: 'rgba(0,0,0,0.25)', fontSize: 8 }}>{pct}%</span>
+          <span style={{ color: 'rgba(0,0,0,0.28)', fontSize: 9 }}>{pct}%</span>
         </span>
       </div>
       <div style={{

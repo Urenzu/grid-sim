@@ -42,7 +42,7 @@ export function CarbonLine({ data }: Props) {
         .attr('stroke', 'rgba(0,0,0,0.12)').attr('stroke-width', 1)
         .attr('stroke-dasharray', '4 3')
       g.append('text').attr('x', iw - 2).attr('y', refY - 4)
-        .attr('text-anchor', 'end').attr('font-size', 7)
+        .attr('text-anchor', 'end').attr('font-size', 9)
         .attr('font-family', 'IBM Plex Mono, monospace')
         .attr('fill', 'rgba(0,0,0,0.25)').text('US avg 386')
     }
@@ -102,14 +102,14 @@ export function CarbonLine({ data }: Props) {
 
         const tip = tipRef.current!
         tip.innerHTML = `
-          <div style="font-size:8.5px;color:rgba(0,0,0,0.38);letter-spacing:0.08em;margin-bottom:7px">
+          <div style="font-size:10px;color:rgba(0,0,0,0.38);letter-spacing:0.04em;margin-bottom:7px">
             ${fmtTooltipTime(parseEiaPeriod(pt.period))}
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
             <div style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0"></div>
             <span style="font-size:11px;font-weight:600;color:rgba(0,0,0,0.75)">${Math.round(pt.intensity)} g/kWh</span>
           </div>
-          <div style="font-size:8.5px;color:rgba(0,0,0,0.35)">${label}</div>
+          <div style="font-size:10px;color:rgba(0,0,0,0.35)">${label}</div>
         `
         tip.style.opacity = '1'
         positionTooltip(tip, wrapRef.current!, event.clientX, event.clientY)
