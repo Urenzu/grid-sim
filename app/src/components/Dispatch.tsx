@@ -1,21 +1,35 @@
 import { useState } from 'react'
-import type { BaGenData } from '../types'
+import type { BaGenData, GenHistoryPoint, DuckPoint } from '../types'
 import { useHistoryData } from '../hooks/useHistoryData'
+import { useRangeData }   from '../hooks/useRangeData'
 import { BA_DEFS, BA_COLORS } from '../data/ba'
 import { DuckCurve }            from './charts/DuckCurve'
 import { FuelMixArea }          from './charts/FuelMixArea'
 import { CarbonLine }           from './charts/CarbonLine'
 import { RenewablePenetration } from './charts/RenewablePenetration'
 
-const BA_OPTIONS  = BA_DEFS.map(([id, name]) => ({ id, name }))
+const BA_OPTIONS  = BA_DEFS.map(([id, name]) => ({ id, name: name as string }))
 const BA_NAME_MAP = Object.fromEntries(BA_DEFS.map(([id, name]) => [id, name]))
 
-const PRESETS = [
-  { hours: 24,  label: '24h' },
-  { hours: 48,  label: '48h' },
-  { hours: 72,  label: '72h' },
-  { hours: 168, label: '7d'  },
+type PresetMode = 'live' | 'range'
+interface Preset {
+  label: string
+  mode:  PresetMode
+  hours?: number
+  days?:  number
+}
+
+const PRESETS: Preset[] = [
+  { label: '24h',  mode: 'live',  hours: 24  },
+  { label: '48h',  mode: 'live',  hours: 48  },
+  { label: '72h',  mode: 'live',  hours: 72  },
+  { label: '7d',   mode: 'live',  hours: 168 },
+  { label: '30d',  mode: 'range', days: 30   },
+  { label: '90d',  mode: 'range', days: 90   },
+  { label: '1y',   mode: 'range', days: 365  },
 ]
+
+const DEFAULT_PRESET = PRESETS[1]  // 48h
 
 interface Props {
   genData:    BaGenData[] | null
@@ -24,10 +38,52 @@ interface Props {
   onBaChange: (id: string) => void
 }
 
-export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaChange }: Props) {
-  const [hours, setHours] = useState(48)
-
+// Inner component so hooks are always called unconditionally
+function LiveCharts({ ba, hours }: { ba: string; hours: number }) {
   const { history, duck, loading, fetching } = useHistoryData(ba, hours)
+  return <ChartGrid history={history} duck={duck} loading={loading} fetching={fetching} />
+}
+
+function RangeCharts({ ba, days }: { ba: string; days: number }) {
+  const { history, duck, loading, fetching } = useRangeData(ba, days)
+  return <ChartGrid history={history} duck={duck} loading={loading} fetching={fetching} />
+}
+
+function ChartGrid({
+  history, duck, loading, fetching,
+}: {
+  history:  GenHistoryPoint[] | null
+  duck:     DuckPoint[]       | null
+  loading:  boolean
+  fetching: boolean
+}) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20,
+      opacity: fetching && !loading ? 0.55 : 1,
+      transition: 'opacity 0.15s ease',
+    }}>
+      <ChartCard title="Duck Curve — Net Load vs Renewable Output">
+        {duck ? <DuckCurve data={duck} /> : <ChartBlank />}
+      </ChartCard>
+
+      <ChartCard title="Fuel Mix — Generation by Source">
+        {history ? <FuelMixArea data={history} /> : <ChartBlank />}
+      </ChartCard>
+
+      <ChartCard title="Carbon Intensity — g CO₂/kWh">
+        {duck ? <CarbonLine data={duck} /> : <ChartBlank />}
+      </ChartCard>
+
+      <ChartCard title="Renewable Penetration — % of Generation">
+        {duck ? <RenewablePenetration data={duck} /> : <ChartBlank />}
+      </ChartCard>
+    </div>
+  )
+}
+
+export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaChange }: Props) {
+  const [preset, setPreset] = useState<Preset>(DEFAULT_PRESET)
 
   const baColor = BA_COLORS[ba] ?? '#333'
   const baName  = BA_NAME_MAP[ba] ?? ba
@@ -52,6 +108,10 @@ export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaC
     border: '1px solid rgba(0,102,204,0.25)',
     color: '#0066cc',
   }
+
+  // Divider between live and range presets
+  const livePresets  = PRESETS.filter(p => p.mode === 'live')
+  const rangePresets = PRESETS.filter(p => p.mode === 'range')
 
   return (
     <div style={{
@@ -90,46 +150,37 @@ export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaC
           ))}
         </select>
 
-        {/* Time range buttons */}
+        {/* Live presets */}
         <div style={{ display: 'flex', gap: 4 }}>
-          {PRESETS.map(o => (
-            <button key={o.hours} onClick={() => setHours(o.hours)} style={
-              hours === o.hours ? activeBtnStyle : ctrlStyle
+          {livePresets.map(p => (
+            <button key={p.label} onClick={() => setPreset(p)} style={
+              preset.label === p.label ? activeBtnStyle : ctrlStyle
             }>
-              {o.label}
+              {p.label}
             </button>
           ))}
         </div>
 
-        {fetching && !loading && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'rgba(0,0,0,0.25)' }}>
-            updating…
-          </span>
-        )}
+        {/* Divider */}
+        <div style={{ width: 1, height: 18, background: 'rgba(0,0,0,0.12)' }} />
+
+        {/* Range presets */}
+        <div style={{ display: 'flex', gap: 4 }}>
+          {rangePresets.map(p => (
+            <button key={p.label} onClick={() => setPreset(p)} style={
+              preset.label === p.label ? activeBtnStyle : ctrlStyle
+            }>
+              {p.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Chart grid */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20,
-        opacity: fetching && !loading ? 0.55 : 1,
-        transition: 'opacity 0.15s ease',
-      }}>
-        <ChartCard title="Duck Curve — Net Load vs Renewable Output">
-          {duck ? <DuckCurve data={duck} /> : <ChartBlank />}
-        </ChartCard>
-
-        <ChartCard title="Fuel Mix — Generation by Source">
-          {history ? <FuelMixArea data={history} /> : <ChartBlank />}
-        </ChartCard>
-
-        <ChartCard title="Carbon Intensity — g CO₂/kWh">
-          {duck ? <CarbonLine data={duck} /> : <ChartBlank />}
-        </ChartCard>
-
-        <ChartCard title="Renewable Penetration — % of Generation">
-          {duck ? <RenewablePenetration data={duck} /> : <ChartBlank />}
-        </ChartCard>
-      </div>
+      {/* Charts — rendered by mode so hooks are stable */}
+      {preset.mode === 'live'
+        ? <LiveCharts  ba={ba} hours={preset.hours!} />
+        : <RangeCharts ba={ba} days={preset.days!}  />
+      }
     </div>
   )
 }

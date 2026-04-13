@@ -1,12 +1,18 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { useAnalyticsData } from '../hooks/useAnalyticsData'
-import { FUEL_COLORS } from '../data/ba'
-import { BaScatter } from './charts/BaScatter'
+import { useHeatmapData }   from '../hooks/useHeatmapData'
+import { useTrendData }     from '../hooks/useTrendData'
+import { FUEL_COLORS, BA_DEFS } from '../data/ba'
+import { BaScatter }     from './charts/BaScatter'
 import { BaHourHeatmap } from './charts/BaHourHeatmap'
+import { GridTrend }     from './charts/GridTrend'
 import type { BaRanking } from '../types'
 
-type SortKey = 'capacity' | 'carbon' | 'renewables' | 'clean'
-type ViewKey  = 'list' | 'scatter' | 'heatmap'
+type SortKey  = 'capacity' | 'carbon' | 'renewables' | 'clean'
+type ViewKey  = 'list' | 'scatter' | 'heatmap' | 'trends'
+type Granularity = 'day' | 'week' | 'month'
+
+const BA_OPTIONS = BA_DEFS.map(([id, name]) => ({ id, name: name as string }))
 
 const SORTS: { id: SortKey; label: string }[] = [
   { id: 'capacity',   label: 'capacity'   },
@@ -19,6 +25,20 @@ const VIEWS: { id: ViewKey; label: string }[] = [
   { id: 'list',    label: 'list'    },
   { id: 'scatter', label: 'scatter' },
   { id: 'heatmap', label: 'heatmap' },
+  { id: 'trends',  label: 'trends'  },
+]
+
+const HEATMAP_DAYS = [
+  { days: 14,  label: '14d' },
+  { days: 30,  label: '30d' },
+  { days: 90,  label: '90d' },
+  { days: 180, label: '6mo' },
+]
+
+const GRANULARITIES: { id: Granularity; label: string }[] = [
+  { id: 'day',   label: 'daily'   },
+  { id: 'week',  label: 'weekly'  },
+  { id: 'month', label: 'monthly' },
 ]
 
 // ── formatting ────────────────────────────────────────────────────────────
@@ -29,7 +49,6 @@ function fmtMw(mw: number): string {
 function fmtPct(v: number): string { return `${v.toFixed(1)}%` }
 function fmtCi(v: number): string  { return `${Math.round(v)} g/kWh` }
 
-// green → red across 0–900 g/kWh
 function ciColor(intensity: number): string {
   const t = Math.min(intensity / 900, 1)
   const r = Math.round(34  + t * (220 - 34))
@@ -114,8 +133,30 @@ function PillToggle<T extends string>({
   )
 }
 
+function BaSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      style={{
+        background: 'rgba(255,255,255,0.88)',
+        border: '1px solid rgba(0,0,0,0.1)',
+        borderRadius: 8,
+        padding: '6px 10px',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 11,
+        color: '#1a1a1a',
+        cursor: 'pointer',
+        outline: 'none',
+      }}
+    >
+      {BA_OPTIONS.map(o => (
+        <option key={o.id} value={o.id}>{o.id} — {o.name}</option>
+      ))}
+    </select>
+  )
+}
 
-// Mini stacked fuel bar — replaces the plain color dot in list rows
 function FuelMiniBar({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: number }) {
   const sorted = [...fuels].sort((a, b) => b.mw - a.mw)
   return (
@@ -133,7 +174,6 @@ function FuelMiniBar({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: n
   )
 }
 
-// Expanded fuel breakdown shown below a clicked row
 function FuelDetail({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: number }) {
   const sorted = [...fuels].sort((a, b) => b.mw - a.mw)
   const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
@@ -165,6 +205,102 @@ function FuelDetail({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: nu
   )
 }
 
+// ── heatmap panel ─────────────────────────────────────────────────────────
+
+function HeatmapPanel() {
+  const [ba,   setBa]   = useState('CISO')
+  const [days, setDays] = useState(30)
+  const { cells, loading, fetching } = useHeatmapData(ba, days)
+  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <BaSelect value={ba} onChange={setBa} />
+        <PillToggle
+          options={HEATMAP_DAYS.map(d => ({ id: String(d.days) as string, label: d.label }))}
+          value={String(days)}
+          onChange={v => setDays(Number(v))}
+        />
+        {fetching && !loading && (
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.25)' }}>loading…</span>
+        )}
+      </div>
+      <div style={{ ...mono, fontSize: 10, color: 'rgba(0,0,0,0.3)', marginBottom: 12 }}>
+        carbon intensity by hour-of-day × day-of-week &nbsp;·&nbsp; color = avg g CO₂/kWh
+      </div>
+      {loading ? (
+        <div style={{ height: 340, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>loading…</span>
+        </div>
+      ) : cells.length === 0 ? (
+        <div style={{ height: 340, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>no parquet data yet — accumulating…</span>
+        </div>
+      ) : (
+        <BaHourHeatmap cells={cells} />
+      )}
+    </>
+  )
+}
+
+// ── trends panel ──────────────────────────────────────────────────────────
+
+function TrendsPanel() {
+  const [gran, setGran] = useState<Granularity>('month')
+  const [ba,   setBa]   = useState('')   // empty = all BAs
+  const { points, loading, fetching } = useTrendData(gran, ba || undefined)
+  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
+
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+        <PillToggle options={GRANULARITIES} value={gran} onChange={setGran} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.3)' }}>BA</span>
+          <select
+            value={ba}
+            onChange={e => setBa(e.target.value)}
+            style={{
+              background: 'rgba(255,255,255,0.88)',
+              border: '1px solid rgba(0,0,0,0.1)',
+              borderRadius: 8,
+              padding: '6px 10px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              color: '#1a1a1a',
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value=''>all BAs</option>
+            {BA_OPTIONS.map(o => (
+              <option key={o.id} value={o.id}>{o.id} — {o.name}</option>
+            ))}
+          </select>
+        </div>
+        {fetching && !loading && (
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.25)' }}>loading…</span>
+        )}
+      </div>
+      <div style={{ ...mono, fontSize: 10, color: 'rgba(0,0,0,0.3)', marginBottom: 12 }}>
+        {ba ? `${ba} trend` : 'grid-wide trend'} &nbsp;·&nbsp; clean% / renewable% / carbon intensity over time
+      </div>
+      {loading ? (
+        <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>loading…</span>
+        </div>
+      ) : points.length === 0 ? (
+        <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>no parquet data yet — accumulating…</span>
+        </div>
+      ) : (
+        <GridTrend points={points} />
+      )}
+    </>
+  )
+}
+
 // ── main component ────────────────────────────────────────────────────────
 
 export function Analytics() {
@@ -174,16 +310,6 @@ export function Analytics() {
   const [expandedBa, setExpandedBa] = useState<string | null>(null)
 
   const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
-
-  // Derive BaCarbonData[] for the heatmap from analytics rankings
-  const carbonData = useMemo(
-    () => analytics?.rankings.map(r => ({
-      ba:        r.ba,
-      intensity: r.carbonIntensity,
-      totalMw:   r.totalMw,
-    })) ?? [],
-    [analytics],
-  )
 
   if (loading || !analytics) {
     return (
@@ -241,7 +367,6 @@ export function Analytics() {
                 <div key={r.ba} style={{
                   borderBottom: !isLast || isOpen ? '1px solid rgba(0,0,0,0.05)' : 'none',
                 }}>
-                  {/* Row */}
                   <div
                     onClick={() => setExpandedBa(isOpen ? null : r.ba)}
                     style={{
@@ -252,22 +377,15 @@ export function Analytics() {
                       transition: 'background 0.1s ease',
                     }}
                   >
-                    {/* Rank */}
                     <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.18)', width: 22, textAlign: 'right', flexShrink: 0 }}>
                       {i + 1}
                     </div>
-
-                    {/* Mini fuel bar */}
                     <FuelMiniBar fuels={r.fuels} totalMw={r.totalMw} />
-
-                    {/* BA ticker */}
                     <div style={{ flex: '0 0 50px' }}>
                       <div style={{ ...mono, fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.76)' }}>
                         {r.ba}
                       </div>
                     </div>
-
-                    {/* Full label */}
                     <div style={{
                       ...mono, fontSize: 9, color: 'rgba(0,0,0,0.32)',
                       flex: '1 1 150px', overflow: 'hidden',
@@ -275,8 +393,6 @@ export function Analytics() {
                     }}>
                       {r.label}
                     </div>
-
-                    {/* Metric bar + value */}
                     <div style={{ flex: '2 1 200px', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
                         flex: 1, height: 5, background: 'rgba(0,0,0,0.06)',
@@ -296,8 +412,6 @@ export function Analytics() {
                         {label}
                       </div>
                     </div>
-
-                    {/* Expand indicator */}
                     <div style={{
                       ...mono, fontSize: 9, color: 'rgba(0,0,0,0.18)',
                       width: 10, flexShrink: 0,
@@ -307,8 +421,6 @@ export function Analytics() {
                       ›
                     </div>
                   </div>
-
-                  {/* Expanded fuel detail */}
                   {isOpen && <FuelDetail fuels={r.fuels} totalMw={r.totalMw} />}
                 </div>
               )
@@ -337,10 +449,18 @@ export function Analytics() {
             border: '1px solid rgba(0,0,0,0.07)',
             borderRadius: 12, padding: '20px 16px 12px',
           }}>
-            <div style={{ ...mono, fontSize: 11, color: 'rgba(0,0,0,0.3)', marginBottom: 16 }}>
-              top BAs by output &nbsp;·&nbsp; bar width ∝ √(generation) &nbsp;·&nbsp; color = carbon intensity
-            </div>
-            <BaHourHeatmap carbonData={carbonData} />
+            <HeatmapPanel />
+          </div>
+        )}
+
+        {/* ── Trends view ────────────────────────────────────────────── */}
+        {view === 'trends' && (
+          <div style={{
+            background: 'rgba(255,255,255,0.75)',
+            border: '1px solid rgba(0,0,0,0.07)',
+            borderRadius: 12, padding: '20px 16px 12px',
+          }}>
+            <TrendsPanel />
           </div>
         )}
 

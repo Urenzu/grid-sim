@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{extract::{Query, State}, http::StatusCode, response::Json};
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 
 use crate::analytics::compute_ba_analytics;
 use crate::domain::{carbon_intensity, normalize_fuel};
@@ -14,7 +14,8 @@ use crate::parquet::{
 };
 use crate::types::{
     AnalyticsResponse, AppState, BaCarbonData, BaGenData, CompareParams, DuckPoint, FuelEntry,
-    GenHistoryPoint, GraphData, HistoryParams,
+    GenHistoryPoint, GraphData, HeatmapCell, HeatmapParams, GridTrendPoint, HistoryParams,
+    RangeParams, RangeResponse, TrendParams,
 };
 
 // ── HTTP handlers ──────────────────────────────────────────────────────────
@@ -175,6 +176,67 @@ pub(crate) async fn compare_handler(
         }))
         .collect();
     Ok(Json(serde_json::json!({ "entries": entries, "grid": g })))
+}
+
+// ── Parquet-backed handlers ────────────────────────────────────────────────
+
+pub(crate) async fn range_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<RangeParams>,
+) -> Result<Json<RangeResponse>, StatusCode> {
+    let start = NaiveDate::parse_from_str(&params.start, "%Y-%m-%d")
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    let end   = NaiveDate::parse_from_str(&params.end, "%Y-%m-%d")
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    if start > end { return Err(StatusCode::BAD_REQUEST); }
+
+    let data_dir = state.data_dir.clone();
+    let ba       = params.ba.clone();
+
+    let (history, duck) = tokio::task::spawn_blocking(move || {
+        crate::query::query_range(&data_dir, &ba, start, end)
+    })
+    .await
+    .map_err(|e| { tracing::error!("range join: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?
+    .map_err(|e| { tracing::error!("range query: {e:#}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    Ok(Json(RangeResponse { history, duck }))
+}
+
+pub(crate) async fn heatmap_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<HeatmapParams>,
+) -> Result<Json<Vec<HeatmapCell>>, StatusCode> {
+    let days     = params.days.unwrap_or(30).min(365);
+    let data_dir = state.data_dir.clone();
+    let ba       = params.ba.clone();
+
+    let cells = tokio::task::spawn_blocking(move || {
+        crate::query::query_heatmap(&data_dir, &ba, days)
+    })
+    .await
+    .map_err(|e| { tracing::error!("heatmap join: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?
+    .map_err(|e| { tracing::error!("heatmap query: {e:#}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    Ok(Json(cells))
+}
+
+pub(crate) async fn trends_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<TrendParams>,
+) -> Result<Json<Vec<GridTrendPoint>>, StatusCode> {
+    let granularity = params.granularity.as_deref().unwrap_or("month").to_string();
+    let ba          = params.ba.clone();
+    let data_dir    = state.data_dir.clone();
+
+    let points = tokio::task::spawn_blocking(move || {
+        crate::query::query_trends(&data_dir, ba.as_deref(), &granularity)
+    })
+    .await
+    .map_err(|e| { tracing::error!("trends join: {e}"); StatusCode::INTERNAL_SERVER_ERROR })?
+    .map_err(|e| { tracing::error!("trends query: {e:#}"); StatusCode::INTERNAL_SERVER_ERROR })?;
+
+    Ok(Json(points))
 }
 
 // ── Smart data task ────────────────────────────────────────────────────────

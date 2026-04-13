@@ -260,3 +260,56 @@ pub(crate) struct HistoryParams {
 pub(crate) struct CompareParams {
     pub(crate) bas: String,
 }
+
+#[derive(Deserialize)]
+pub(crate) struct RangeParams {
+    pub(crate) ba:    String,
+    pub(crate) start: String, // "YYYY-MM-DD"
+    pub(crate) end:   String, // "YYYY-MM-DD"
+}
+
+#[derive(Deserialize)]
+pub(crate) struct HeatmapParams {
+    pub(crate) ba:   String,
+    pub(crate) days: Option<u32>,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct TrendParams {
+    pub(crate) ba:          Option<String>,
+    pub(crate) granularity: Option<String>, // "day" | "week" | "month" (default)
+}
+
+// ── Parquet query response types ───────────────────────────────────────────
+
+/// One cell in a 24-row × 7-col hour-of-day × day-of-week carbon intensity grid.
+#[derive(Serialize, Clone)]
+pub struct HeatmapCell {
+    pub hour:         u8,  // 0–23
+    pub dow:          u8,  // 0=Mon … 6=Sun
+    pub intensity:    f64,
+    #[serde(rename = "sampleCount")]
+    pub sample_count: u32,
+}
+
+/// One data point in a time-bucketed grid or per-BA trend series.
+#[derive(Serialize, Clone)]
+pub struct GridTrendPoint {
+    pub period:           String, // "YYYY-MM" monthly, "YYYY-MM-DD" daily
+    #[serde(rename = "renewablePct")]
+    pub renewable_pct:    f64,
+    #[serde(rename = "cleanPct")]
+    pub clean_pct:        f64,
+    #[serde(rename = "carbonIntensity")]
+    pub carbon_intensity: f64,
+    #[serde(rename = "totalMw")]
+    pub total_mw:         f64,
+}
+
+/// Combined response for the /api/range endpoint — both history and duck data
+/// computed from the same parquet scan.
+#[derive(Serialize, Clone)]
+pub struct RangeResponse {
+    pub history: Vec<GenHistoryPoint>,
+    pub duck:    Vec<DuckPoint>,
+}

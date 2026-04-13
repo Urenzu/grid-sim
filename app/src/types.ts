@@ -69,5 +69,25 @@ export interface AnalyticsData {
   }
 }
 
+export interface HeatmapCell {
+  hour:        number   // 0–23
+  dow:         number   // 0=Mon … 6=Sun
+  intensity:   number
+  sampleCount: number
+}
+
+export interface GridTrendPoint {
+  period:          string   // "YYYY-MM", "YYYY-MM-DD", or week-start date
+  renewablePct:    number
+  cleanPct:        number
+  carbonIntensity: number
+  totalMw:         number
+}
+
+export interface RangeResponse {
+  history: GenHistoryPoint[]
+  duck:    DuckPoint[]
+}
+
 export type Mode     = 'flow' | 'generation' | 'carbon'
 export type LayerKey = 'arcs' | 'particles' | 'nuclear' | 'hydro' | 'wind' | 'solar' | 'gas' | 'coal'

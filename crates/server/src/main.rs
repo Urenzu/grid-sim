@@ -4,6 +4,7 @@ mod eia;
 mod handlers;
 mod labels;
 mod parquet;
+mod query;
 mod types;
 
 use anyhow::Result;
@@ -63,6 +64,9 @@ async fn main() -> Result<()> {
         .route("/api/duck-curve",        get(handlers::duck_curve_handler))
         .route("/api/analytics",         get(handlers::analytics_handler))
         .route("/api/analytics/compare", get(handlers::compare_handler))
+        .route("/api/range",             get(handlers::range_handler))
+        .route("/api/heatmap",           get(handlers::heatmap_handler))
+        .route("/api/trends",            get(handlers::trends_handler))
         .layer(CorsLayer::permissive())
         .with_state(state);
 
