@@ -7,21 +7,21 @@ import {
 } from './chartUtils'
 import { ChartLegend } from './ChartLegend'
 
-const W = 520, H = 210, M = { top: 12, right: 16, bottom: 26, left: 54 }
+const W = 560, H = 280, M = { top: 16, right: 20, bottom: 40, left: 64 }
 
 const SERIES = [
-  { key: 'netLoadMw'  as const, label: 'Net Load',   color: '#1d4ed8' },
-  { key: 'solarMw'    as const, label: 'Solar',       color: '#d97706' },
-  { key: 'windMw'     as const, label: 'Wind',        color: '#0891b2' },
-  { key: 'totalMw'    as const, label: 'Total Load',  color: 'rgba(0,0,0,0.35)' },
+  { key: 'netLoadMw'  as const, label: 'Net Load (demand minus solar/wind)',  color: '#1d4ed8' },
+  { key: 'solarMw'    as const, label: 'Solar',                               color: '#d97706' },
+  { key: 'windMw'     as const, label: 'Wind',                                color: '#0891b2' },
+  { key: 'totalMw'    as const, label: 'Total Generation',                    color: 'rgba(0,0,0,0.4)' },
 ]
 
 interface Props { data: DuckPoint[] }
 
 export function DuckCurve({ data }: Props) {
-  const svgRef     = useRef<SVGSVGElement>(null)
-  const wrapRef    = useRef<HTMLDivElement>(null)
-  const tipRef     = useRef<HTMLDivElement>(null)
+  const svgRef  = useRef<SVGSVGElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const tipRef  = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (data.length < 2) return
@@ -29,7 +29,7 @@ export function DuckCurve({ data }: Props) {
     svg.selectAll('*').remove()
 
     const iw = W - M.left - M.right
-    const ih = H - M.top - M.bottom
+    const ih = H - M.top  - M.bottom
     const periods = data.map(d => d.period)
     const x    = makeTimeScale(periods, iw)
     const cfg  = axisConfig(periods)
@@ -41,6 +41,15 @@ export function DuckCurve({ data }: Props) {
     drawYAxis(g, y, iw, d => `${(+d / 1000).toFixed(0)} GW`)
     drawTimeAxis(g.append('g').attr('transform', `translate(0,${ih})`), x, cfg, -ih, iw)
 
+    // Y-axis label
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -(ih / 2)).attr('y', -50)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 11).attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('fill', 'rgba(0,0,0,0.5)')
+      .text('gigawatts (GW)')
+
     const line = (key: keyof DuckPoint) =>
       d3.line<DuckPoint>()
         .x(d => x(parseEiaPeriod(d.period))).y(d => y(d[key] as number))
@@ -48,31 +57,31 @@ export function DuckCurve({ data }: Props) {
 
     // Solar fill
     g.append('path').datum(data)
-      .attr('fill', 'rgba(217,119,6,0.08)')
+      .attr('fill', 'rgba(217,119,6,0.1)')
       .attr('d', d3.area<DuckPoint>()
         .x(d => x(parseEiaPeriod(d.period))).y0(ih).y1(d => y(d.solarMw))
         .curve(d3.curveMonotoneX))
 
-    // Lines
+    // Lines — total first (behind)
     g.append('path').datum(data).attr('fill', 'none')
-      .attr('stroke', 'rgba(0,0,0,0.18)').attr('stroke-width', 1.5)
-      .attr('stroke-dasharray', '4 3').attr('d', line('totalMw'))
+      .attr('stroke', 'rgba(0,0,0,0.25)').attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', '5 3').attr('d', line('totalMw'))
     g.append('path').datum(data).attr('fill', 'none')
-      .attr('stroke', '#1d4ed8').attr('stroke-width', 2).attr('d', line('netLoadMw'))
+      .attr('stroke', '#1d4ed8').attr('stroke-width', 2.5).attr('d', line('netLoadMw'))
     g.append('path').datum(data).attr('fill', 'none')
-      .attr('stroke', '#d97706').attr('stroke-width', 1.5).attr('d', line('solarMw'))
+      .attr('stroke', '#d97706').attr('stroke-width', 2).attr('d', line('solarMw'))
     g.append('path').datum(data).attr('fill', 'none')
-      .attr('stroke', '#0891b2').attr('stroke-width', 1.5).attr('d', line('windMw'))
+      .attr('stroke', '#0891b2').attr('stroke-width', 2).attr('d', line('windMw'))
 
     // ── Hover ─────────────────────────────────────────────────────────────
     const crosshair = g.append('line')
       .attr('y1', 0).attr('y2', ih)
-      .attr('stroke', 'rgba(0,0,0,0.15)').attr('stroke-width', 1)
+      .attr('stroke', 'rgba(0,0,0,0.18)').attr('stroke-width', 1)
       .style('opacity', 0).attr('pointer-events', 'none')
 
     const dots = SERIES.map(s =>
-      g.append('circle').attr('r', 3.5)
-        .attr('fill', s.color).attr('stroke', '#fff').attr('stroke-width', 1.5)
+      g.append('circle').attr('r', 4)
+        .attr('fill', s.color).attr('stroke', '#fff').attr('stroke-width', 2)
         .style('opacity', 0).attr('pointer-events', 'none')
     )
 
@@ -100,13 +109,13 @@ export function DuckCurve({ data }: Props) {
 
         const tip = tipRef.current!
         tip.innerHTML = `
-          <div style="font-size:10px;color:rgba(0,0,0,0.38);letter-spacing:0.04em;margin-bottom:7px">
+          <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">
             ${fmtTooltipTime(parseEiaPeriod(pt.period))}
           </div>
           ${SERIES.map(s => `
-            <div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:3px">
-              <span style="color:${s.color};opacity:0.9">${s.label}</span>
-              <span style="color:rgba(0,0,0,0.65);font-weight:500">${fmtMW(pt[s.key] as number)}</span>
+            <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:4px">
+              <span style="color:${s.color === 'rgba(0,0,0,0.4)' ? 'rgba(0,0,0,0.65)' : s.color}">${s.label.split(' (')[0]}</span>
+              <span style="font-weight:600">${fmtMW(pt[s.key] as number)}</span>
             </div>`).join('')}
         `
         tip.style.opacity = '1'
@@ -121,13 +130,13 @@ export function DuckCurve({ data }: Props) {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <svg ref={svgRef} style={{ width: '100%', height: H }} viewBox={`0 0 ${W} ${H}`} />
+      <svg ref={svgRef} style={{ width: '100%', height: 'auto' }} viewBox={`0 0 ${W} ${H}`} />
       <div ref={tipRef} style={TOOLTIP_STYLE} />
       <ChartLegend entries={[
-        { label: 'Total Load', color: 'rgba(0,0,0,0.35)', dash: '4 3' },
-        { label: 'Net Load',   color: '#1d4ed8' },
-        { label: 'Solar',      color: '#d97706' },
-        { label: 'Wind',       color: '#0891b2' },
+        { label: 'Total Generation',        color: 'rgba(0,0,0,0.4)', dash: '5 3' },
+        { label: 'Net Load',                color: '#1d4ed8' },
+        { label: 'Solar',                   color: '#d97706' },
+        { label: 'Wind',                    color: '#0891b2' },
       ]} />
     </div>
   )

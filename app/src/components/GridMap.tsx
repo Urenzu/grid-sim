@@ -184,17 +184,24 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
     }
 
     // ── D3 zoom on canvas ────────────────────────────────────────────────
+    const setZoomLabel = (k: number) => {
+      const el = document.getElementById('stat-zoom')
+      if (el) el.textContent = k.toFixed(1) + '\u00d7'
+    }
+
     d3.select(canvas)
       .call(
         d3.zoom<HTMLCanvasElement, unknown>()
           .scaleExtent([0.5, 12])
           .on('zoom', e => {
             S.current.transform = e.transform
-            const el = document.getElementById('stat-zoom')
-            if (el) el.textContent = e.transform.k.toFixed(1) + '\u00d7'
+            setZoomLabel(e.transform.k)
           })
       )
       .on('dblclick.zoom', null)
+
+    // Populate immediately on (re)mount so it never shows the placeholder
+    setZoomLabel(S.current.transform.k)
 
     // ── Hit test (18 px screen radius) ───────────────────────────────────
     function hitBA(ex: number, ey: number): string | null {

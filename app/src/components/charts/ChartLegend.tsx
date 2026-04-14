@@ -14,31 +14,31 @@ export function ChartLegend({ entries }: Props) {
     <div style={{
       display:    'flex',
       flexWrap:   'wrap',
-      gap:        '4px 18px',
-      marginTop:  8,
+      gap:        '6px 20px',
+      marginTop:  10,
       paddingLeft: 4,
     }}>
       {entries.map(({ label, color, dash, swatch = 'line' }) => (
-        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           {swatch === 'rect' ? (
             <div style={{
-              width: 10, height: 10, borderRadius: 2,
-              background: color, opacity: 0.85, flexShrink: 0,
+              width: 12, height: 12, borderRadius: 3,
+              background: color, opacity: 0.9, flexShrink: 0,
             }} />
           ) : (
-            <svg width={20} height={10} style={{ flexShrink: 0, overflow: 'visible' }}>
+            <svg width={22} height={12} style={{ flexShrink: 0, overflow: 'visible' }}>
               <line
-                x1={0} x2={20} y1={5} y2={5}
+                x1={0} x2={22} y1={6} y2={6}
                 stroke={color}
-                strokeWidth={2}
+                strokeWidth={2.5}
                 strokeDasharray={dash ?? undefined}
               />
             </svg>
           )}
           <span style={{
             fontFamily: 'IBM Plex Mono, monospace',
-            fontSize:   9,
-            color:      'rgba(0,0,0,0.45)',
+            fontSize:   11,
+            color:      'rgba(0,0,0,0.65)',
             userSelect: 'none',
             whiteSpace: 'nowrap',
           }}>

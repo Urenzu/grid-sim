@@ -6,10 +6,24 @@ interface Props {
   loading: boolean
 }
 
-export function HUD({ data, error, loading }: Props) {
+// "2026-04-12T07" → "Apr 12 · 7 AM UTC"
+function fmtPeriod(period: string): string {
+  const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  // period format: "YYYY-MM-DDTHH"
+  const [datePart, hourPart] = period.split('T')
+  if (!datePart || hourPart === undefined) return period
+  const [, mm, dd] = datePart.split('-')
+  const hour = parseInt(hourPart, 10)
+  const mon  = MONTHS[parseInt(mm, 10) - 1] ?? mm
+  const day  = parseInt(dd, 10)
+  const ampm = hour === 0 ? 'midnight' : hour === 12 ? 'noon'
+              : hour < 12 ? `${hour} AM` : `${hour - 12} PM`
+  return `${mon} ${day} · ${ampm} UTC`
+}
+
+export function HUD({ data, loading }: Props) {
   const links  = data?.links ?? []
-  const status = loading ? 'connecting' : error ? 'error' : data?.period ? data.period + ' UTC' : '\u2014'
-  const hasError    = !!error
+  const period = data?.period ? fmtPeriod(data.period) : loading ? 'connecting…' : '—'
 
   return (
     <>
@@ -31,32 +45,25 @@ export function HUD({ data, error, loading }: Props) {
       <div style={{
         position: 'fixed', top: 20, left: 24,
         zIndex: 20, pointerEvents: 'none',
-        display: 'flex', alignItems: 'center', gap: 10,
       }}>
         <span style={{
           fontFamily: 'var(--font-mono)',
-          fontSize: 10, letterSpacing: '0.18em',
+          fontSize: 12, letterSpacing: '0.16em',
           textTransform: 'uppercase',
-          color: 'rgba(0,0,0,0.4)',
+          color: 'rgba(0,0,0,0.5)',
         }}>
           US Power Grid
         </span>
       </div>
 
-      {/* ── Status badge (top-right) ── */}
-      <div style={{ position: 'fixed', top: 16, right: 24, zIndex: 20, pointerEvents: 'none' }}>
-        <Badge accent={hasError ? 'rgba(220,38,38,0.7)' : undefined}>
-          {status}
-        </Badge>
-      </div>
-
-      {/* ── Stats (bottom-left) ── */}
+      {/* ── Bottom-left: last updated + link count ── */}
       <div style={{
         position: 'fixed', bottom: 20, left: 24,
         zIndex: 20, pointerEvents: 'none',
-        display: 'flex', alignItems: 'center', gap: 6,
+        display: 'flex', alignItems: 'center', gap: 8,
       }}>
-        <StatBadge label="Links" value={links.length || '\u2014'} />
+        <StatBadge label="Updated" value={period} />
+        <StatBadge label="Links" value={links.length || '—'} />
       </div>
 
       {/* ── Zoom (bottom-right) ── */}
@@ -64,24 +71,9 @@ export function HUD({ data, error, loading }: Props) {
         position: 'fixed', bottom: 20, right: 24,
         zIndex: 20, pointerEvents: 'none',
       }}>
-        <StatBadge label="Zoom" value="\u2014" id="stat-zoom" />
+        <StatBadge label="Zoom" value="1.0×" id="stat-zoom" />
       </div>
     </>
-  )
-}
-
-function Badge({ children, accent }: { children: React.ReactNode; accent?: string }) {
-  return (
-    <div className="glass-sm" style={{
-      padding: '4px 10px',
-      fontFamily: 'var(--font-mono)',
-      fontSize: 9,
-      letterSpacing: '0.12em',
-      textTransform: 'uppercase' as const,
-      color: accent ?? 'rgba(0,0,0,0.4)',
-    }}>
-      {children}
-    </div>
   )
 }
 
@@ -93,25 +85,24 @@ function StatBadge({ label, value, accent, id }: {
 }) {
   return (
     <div className="glass-sm" style={{
-      padding: '5px 11px',
-      display: 'flex', alignItems: 'baseline', gap: 7,
+      padding: '6px 14px',
+      display: 'flex', alignItems: 'baseline', gap: 8,
     }}>
       <span style={{
         fontFamily: 'var(--font-mono)',
-        fontSize: 9, letterSpacing: '0.12em',
+        fontSize: 11, letterSpacing: '0.1em',
         textTransform: 'uppercase' as const,
-        color: 'rgba(0,0,0,0.32)',
+        color: 'rgba(0,0,0,0.4)',
       }}>
         {label}
       </span>
       <span id={id} style={{
         fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-        color: accent ?? 'rgba(0,0,0,0.55)',
+        fontSize: 13,
+        color: accent ?? 'rgba(0,0,0,0.65)',
       }}>
         {value}
       </span>
     </div>
   )
 }
-

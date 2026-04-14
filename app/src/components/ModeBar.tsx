@@ -41,29 +41,29 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
       display: 'flex',
       flexDirection: 'column',
       alignItems: 'center',
-      gap: 8,
+      gap: 9,
       pointerEvents: 'none',
     }}>
 
       {/* Generation facility toggles — always visible */}
-      <div style={{ display: 'flex', gap: 5, pointerEvents: 'all' }}>
+      <div style={{ display: 'flex', gap: 6, pointerEvents: 'all' }}>
         {GLOBAL_LAYERS.map(({ id, label, on: onBg, border: onBorder, text: onText }) => {
           const active = layers.has(id)
           return (
             <button key={id} onClick={() => onLayerToggle(id)} style={{
-              background:         active ? onBg : 'rgba(255,255,255,0.8)',
-              backdropFilter:     'blur(14px)',
+              background:           active ? onBg : 'rgba(255,255,255,0.82)',
+              backdropFilter:       'blur(14px)',
               WebkitBackdropFilter: 'blur(14px)',
-              border:             `1px solid ${active ? onBorder : 'rgba(0,0,0,0.08)'}`,
-              borderRadius:       999,
-              color:              active ? onText : 'rgba(0,0,0,0.35)',
-              fontFamily:         'var(--font-mono)',
-              fontSize:           9,
-              letterSpacing:      '0.12em',
-              textTransform:      'uppercase' as const,
-              padding:            '5px 14px',
-              cursor:             'pointer',
-              transition:         'all 0.18s ease',
+              border:               `1px solid ${active ? onBorder : 'rgba(0,0,0,0.09)'}`,
+              borderRadius:         999,
+              color:                active ? onText : 'rgba(0,0,0,0.45)',
+              fontFamily:           'var(--font-mono)',
+              fontSize:             11,
+              letterSpacing:        '0.1em',
+              textTransform:        'uppercase' as const,
+              padding:              '7px 16px',
+              cursor:               'pointer',
+              transition:           'all 0.18s ease',
             }}>
               {label}
             </button>
@@ -78,25 +78,25 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 4 }}
           transition={{ type: 'spring', stiffness: 400, damping: 32 }}
-          style={{ display: 'flex', gap: 5, pointerEvents: 'all' }}
+          style={{ display: 'flex', gap: 6, pointerEvents: 'all' }}
         >
           {FLOW_LAYERS.map(({ id, label }) => {
             const on = layers.has(id)
             return (
               <button key={id} onClick={() => onLayerToggle(id)} style={{
-                background: on ? 'rgba(0,102,204,0.08)' : 'rgba(255,255,255,0.8)',
-                backdropFilter: 'blur(14px)',
+                background:           on ? 'rgba(0,102,204,0.08)' : 'rgba(255,255,255,0.82)',
+                backdropFilter:       'blur(14px)',
                 WebkitBackdropFilter: 'blur(14px)',
-                border: `1px solid ${on ? 'rgba(0,102,204,0.25)' : 'rgba(0,0,0,0.08)'}`,
-                borderRadius: 999,
-                color: on ? '#0066cc' : 'rgba(0,0,0,0.35)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 8,
-                letterSpacing: '0.16em',
-                textTransform: 'uppercase' as const,
-                padding: '5px 14px',
-                cursor: 'pointer',
-                transition: 'all 0.18s ease',
+                border:               `1px solid ${on ? 'rgba(0,102,204,0.25)' : 'rgba(0,0,0,0.09)'}`,
+                borderRadius:         999,
+                color:                on ? '#0066cc' : 'rgba(0,0,0,0.45)',
+                fontFamily:           'var(--font-mono)',
+                fontSize:             11,
+                letterSpacing:        '0.12em',
+                textTransform:        'uppercase' as const,
+                padding:              '7px 16px',
+                cursor:               'pointer',
+                transition:           'all 0.18s ease',
               }}>
                 {label}
               </button>
@@ -107,42 +107,42 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
 
       {/* Mode pill */}
       <div style={{
-        background: 'rgba(255,255,255,0.85)',
-        backdropFilter: 'blur(24px)',
+        background:           'rgba(255,255,255,0.88)',
+        backdropFilter:       'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(0,0,0,0.08)',
-        borderRadius: 999,
-        padding: 4,
-        display: 'flex',
-        gap: 2,
-        pointerEvents: 'all',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
+        border:               '1px solid rgba(0,0,0,0.08)',
+        borderRadius:         999,
+        padding:              5,
+        display:              'flex',
+        gap:                  2,
+        pointerEvents:        'all',
+        boxShadow:            '0 2px 12px rgba(0,0,0,0.07)',
       }}>
         {MODES.map(({ id, label }) => (
           <button key={id} onClick={() => onMode(id)} style={{
-            position: 'relative',
-            background: 'transparent',
-            border: 'none',
-            borderRadius: 999,
-            color: mode === id ? '#1a1a1a' : 'rgba(0,0,0,0.3)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10,
-            letterSpacing: '0.14em',
+            position:      'relative',
+            background:    'transparent',
+            border:        'none',
+            borderRadius:  999,
+            color:         mode === id ? '#1a1a1a' : 'rgba(0,0,0,0.38)',
+            fontFamily:    'var(--font-mono)',
+            fontSize:      12,
+            letterSpacing: '0.12em',
             textTransform: 'uppercase' as const,
-            padding: '8px 22px',
-            cursor: 'pointer',
-            transition: 'color 0.18s ease',
-            minWidth: 108,
+            padding:       '10px 26px',
+            cursor:        'pointer',
+            transition:    'color 0.18s ease',
+            minWidth:      120,
           }}>
             {mode === id && (
               <motion.div
                 layoutId="mode-indicator"
                 style={{
-                  position: 'absolute',
-                  inset: 0,
+                  position:   'absolute',
+                  inset:      0,
                   borderRadius: 999,
                   background: 'rgba(0,102,204,0.08)',
-                  border: '1px solid rgba(0,102,204,0.2)',
+                  border:     '1px solid rgba(0,102,204,0.2)',
                 }}
                 transition={{ type: 'spring', stiffness: 380, damping: 30 }}
               />

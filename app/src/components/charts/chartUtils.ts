@@ -22,6 +22,8 @@ function fmt12(d: Date): string {
 
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
 export function axisConfig(periods: string[]): {
   tickInterval: d3.TimeInterval
   format: (d: Date) => string
@@ -42,16 +44,47 @@ export function axisConfig(periods: string[]): {
       tickInterval: d3.timeHour.every(12)!,
       format: d => {
         const h = d.getHours()
-        // At midnight show day name, otherwise just time
         return h === 0 ? DAY[d.getDay()] : fmt12(d)
       },
       dayLines: true,
     }
   }
+  if (spanH <= 240) {
+    // ~7–10 days: one tick per day
+    return {
+      tickInterval: d3.timeDay.every(1)!,
+      format: d => `${DAY[d.getDay()]} ${d.getDate()}`,
+      dayLines: true,
+    }
+  }
+  if (spanH <= 800) {
+    // ~11–33 days: one tick per week
+    return {
+      tickInterval: d3.timeWeek.every(1)!,
+      format: d => `${MON[d.getMonth()]} ${d.getDate()}`,
+      dayLines: false,
+    }
+  }
+  if (spanH <= 2500) {
+    // ~34–104 days: one tick per 2 weeks
+    return {
+      tickInterval: d3.timeWeek.every(2)!,
+      format: d => `${MON[d.getMonth()]} ${d.getDate()}`,
+      dayLines: false,
+    }
+  }
+  // 105+ days (quarterly, yearly): monthly ticks
+  const everyN = spanH > 5000 ? 3 : 1
   return {
-    tickInterval: d3.timeDay.every(1)!,
-    format: d => `${DAY[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`,
-    dayLines: true,
+    tickInterval: d3.timeMonth.every(everyN)!,
+    format: d => {
+      const m = MON[d.getMonth()]
+      // Show year label on January
+      return d.getMonth() === 0
+        ? `${m} '${String(d.getFullYear()).slice(2)}`
+        : m
+    },
+    dayLines: false,
   }
 }
 
@@ -68,7 +101,7 @@ export function drawTimeAxis(
       .data(midnights).join('line').attr('class', 'midnight')
       .attr('x1', d => scale(d)).attr('x2', d => scale(d))
       .attr('y1', 0).attr('y2', innerHeight)
-      .attr('stroke', 'rgba(0,0,0,0.1)').attr('stroke-width', 1)
+      .attr('stroke', 'rgba(0,0,0,0.12)').attr('stroke-width', 1)
       .attr('stroke-dasharray', '3 3')
   }
 
@@ -80,12 +113,11 @@ export function drawTimeAxis(
     .call(ax => ax.select('.domain').remove())
     .call(ax => ax.selectAll('.tick line').remove())
     .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .attr('font-family', 'IBM Plex Mono, monospace')
       .attr('fill', d => {
-        // Bold the day-name ticks on the 48-72h range
         const date = d as Date
-        return date.getHours?.() === 0 ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0.3)'
+        return date.getHours?.() === 0 ? 'rgba(0,0,0,0.7)' : 'rgba(0,0,0,0.5)'
       })
       .attr('font-weight', d => {
         const date = d as Date
@@ -115,18 +147,19 @@ export function fmtMW(mw: number): string {
 export const TOOLTIP_STYLE: React.CSSProperties = {
   position:       'absolute',
   pointerEvents:  'none',
-  background:     'rgba(255,255,255,0.97)',
-  border:         '1px solid rgba(0,0,0,0.08)',
+  background:     'rgba(255,255,255,0.98)',
+  border:         '1px solid rgba(0,0,0,0.1)',
   borderRadius:   8,
-  padding:        '8px 12px',
+  padding:        '10px 14px',
   fontFamily:     'IBM Plex Mono, monospace',
-  fontSize:       10,
+  fontSize:       11,
   opacity:        0,
   transition:     'opacity 0.08s ease',
   zIndex:         10,
   whiteSpace:     'nowrap',
-  boxShadow:      '0 4px 16px rgba(0,0,0,0.06)',
-  minWidth:       140,
+  boxShadow:      '0 4px 20px rgba(0,0,0,0.1)',
+  minWidth:       150,
+  color:          'rgba(0,0,0,0.75)',
 }
 
 // Position tooltip relative to wrapper, flipping if near right edge
@@ -158,11 +191,10 @@ export function drawYAxis(
     d3.axisLeft(scale).ticks(ticks).tickSize(-innerWidth).tickFormat(format)
   )
     .call(ax => ax.select('.domain').remove())
-    .call(ax => ax.selectAll('.tick line').attr('stroke', 'rgba(0,0,0,0.07)'))
+    .call(ax => ax.selectAll('.tick line').attr('stroke', 'rgba(0,0,0,0.08)'))
     .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
-      .attr('font-size', 10)
+      .attr('font-size', 11)
       .attr('font-family', 'IBM Plex Mono, monospace')
-      .attr('fill', 'rgba(0,0,0,0.35)')
+      .attr('fill', 'rgba(0,0,0,0.6)')
     )
 }
-

@@ -7,7 +7,7 @@ import {
 } from './chartUtils'
 import { ChartLegend } from './ChartLegend'
 
-const W = 520, H = 210, M = { top: 12, right: 16, bottom: 26, left: 46 }
+const W = 560, H = 280, M = { top: 16, right: 20, bottom: 40, left: 58 }
 
 interface Props { data: DuckPoint[] }
 
@@ -22,7 +22,7 @@ export function RenewablePenetration({ data }: Props) {
     svg.selectAll('*').remove()
 
     const iw = W - M.left - M.right
-    const ih = H - M.top - M.bottom
+    const ih = H - M.top  - M.bottom
     const periods = data.map(d => d.period)
     const x   = makeTimeScale(periods, iw)
     const cfg = axisConfig(periods)
@@ -34,40 +34,57 @@ export function RenewablePenetration({ data }: Props) {
 
     const g = svg.append('g').attr('transform', `translate(${M.left},${M.top})`)
 
-    g.call(d3.axisLeft(y).ticks(4).tickSize(-iw).tickFormat(d => `${d}%`))
+    // Y axis
+    g.call(d3.axisLeft(y).ticks(5).tickSize(-iw).tickFormat(d => `${d}%`))
       .call(ax => ax.select('.domain').remove())
-      .call(ax => ax.selectAll('.tick line').attr('stroke', 'rgba(0,0,0,0.07)'))
+      .call(ax => ax.selectAll('.tick line').attr('stroke', 'rgba(0,0,0,0.08)'))
       .call(ax => ax.selectAll<SVGTextElement, unknown>('.tick text')
-        .attr('font-size', 8).attr('font-family', 'IBM Plex Mono, monospace')
-        .attr('fill', 'rgba(0,0,0,0.35)'))
+        .attr('font-size', 11).attr('font-family', 'IBM Plex Mono, monospace')
+        .attr('fill', 'rgba(0,0,0,0.6)'))
+
+    // Y-axis label
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -(ih / 2)).attr('y', -44)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 11).attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('fill', 'rgba(0,0,0,0.5)')
+      .text('% of total generation')
 
     drawTimeAxis(g.append('g').attr('transform', `translate(0,${ih})`), x, cfg, -ih, iw)
 
+    // 50% reference line
     g.append('line')
       .attr('x1', 0).attr('x2', iw).attr('y1', y(50)).attr('y2', y(50))
-      .attr('stroke', 'rgba(0,0,0,0.06)').attr('stroke-width', 1)
+      .attr('stroke', 'rgba(0,0,0,0.1)').attr('stroke-width', 1)
+      .attr('stroke-dasharray', '4 3')
+    g.append('text').attr('x', iw - 4).attr('y', y(50) - 5)
+      .attr('text-anchor', 'end').attr('font-size', 10)
+      .attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('fill', 'rgba(0,0,0,0.35)').text('50%')
 
     const xVal    = (_: unknown, i: number) => x(parseEiaPeriod(data[i].period))
     const lineGen = d3.line<number>().x(xVal).y(v => y(v)).curve(d3.curveMonotoneX)
-    const areaGen = (vals: number[]) => d3.area<number>().x(xVal).y0(ih).y1(v => y(v)).curve(d3.curveMonotoneX)(vals)
+    const areaOf  = (vals: number[]) =>
+      d3.area<number>().x(xVal).y0(ih).y1(v => y(v)).curve(d3.curveMonotoneX)(vals)
 
-    g.append('path').datum(cleanPct).attr('fill', 'rgba(34,197,94,0.08)').attr('d', areaGen(cleanPct)!)
-    g.append('path').datum(varPct).attr('fill', 'rgba(217,119,6,0.08)').attr('d', areaGen(varPct)!)
+    g.append('path').datum(cleanPct).attr('fill', 'rgba(34,197,94,0.1)').attr('d', areaOf(cleanPct)!)
+    g.append('path').datum(varPct).attr('fill', 'rgba(217,119,6,0.1)').attr('d', areaOf(varPct)!)
     g.append('path').datum(cleanPct).attr('fill', 'none')
-      .attr('stroke', '#16a34a').attr('stroke-width', 1.5).attr('stroke-dasharray', '5 3').attr('d', lineGen)
+      .attr('stroke', '#16a34a').attr('stroke-width', 2).attr('stroke-dasharray', '6 3').attr('d', lineGen)
     g.append('path').datum(varPct).attr('fill', 'none')
-      .attr('stroke', '#d97706').attr('stroke-width', 2).attr('d', lineGen)
+      .attr('stroke', '#d97706').attr('stroke-width', 2.5).attr('d', lineGen)
 
     // ── Hover ─────────────────────────────────────────────────────────────
     const crosshair = g.append('line')
       .attr('y1', 0).attr('y2', ih)
-      .attr('stroke', 'rgba(0,0,0,0.15)').attr('stroke-width', 1)
+      .attr('stroke', 'rgba(0,0,0,0.18)').attr('stroke-width', 1)
       .style('opacity', 0).attr('pointer-events', 'none')
 
-    const dotVar   = g.append('circle').attr('r', 3.5).attr('fill', '#d97706')
-      .attr('stroke', '#fff').attr('stroke-width', 1.5).style('opacity', 0).attr('pointer-events', 'none')
-    const dotClean = g.append('circle').attr('r', 3.5).attr('fill', '#16a34a')
-      .attr('stroke', '#fff').attr('stroke-width', 1.5).style('opacity', 0).attr('pointer-events', 'none')
+    const dotVar   = g.append('circle').attr('r', 4.5).attr('fill', '#d97706')
+      .attr('stroke', '#fff').attr('stroke-width', 2).style('opacity', 0).attr('pointer-events', 'none')
+    const dotClean = g.append('circle').attr('r', 4.5).attr('fill', '#16a34a')
+      .attr('stroke', '#fff').attr('stroke-width', 2).style('opacity', 0).attr('pointer-events', 'none')
 
     const bisect = d3.bisector<DuckPoint, Date>(d => parseEiaPeriod(d.period)).left
 
@@ -94,16 +111,16 @@ export function RenewablePenetration({ data }: Props) {
 
         const tip = tipRef.current!
         tip.innerHTML = `
-          <div style="font-size:10px;color:rgba(0,0,0,0.38);letter-spacing:0.04em;margin-bottom:7px">
+          <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">
             ${fmtTooltipTime(parseEiaPeriod(pt.period))}
           </div>
-          <div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:3px">
+          <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:4px">
             <span style="color:#d97706">Solar + Wind</span>
-            <span style="color:rgba(0,0,0,0.65);font-weight:500">${vp.toFixed(1)}%</span>
+            <span style="font-weight:600">${vp.toFixed(1)}%</span>
           </div>
-          <div style="display:flex;justify-content:space-between;gap:18px">
-            <span style="color:#16a34a">All Clean</span>
-            <span style="color:rgba(0,0,0,0.65);font-weight:500">${cp.toFixed(1)}%</span>
+          <div style="display:flex;justify-content:space-between;gap:20px">
+            <span style="color:#16a34a">All Clean Energy</span>
+            <span style="font-weight:600">${cp.toFixed(1)}%</span>
           </div>
         `
         tip.style.opacity = '1'
@@ -119,11 +136,11 @@ export function RenewablePenetration({ data }: Props) {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <svg ref={svgRef} style={{ width: '100%', height: H }} viewBox={`0 0 ${W} ${H}`} />
+      <svg ref={svgRef} style={{ width: '100%', height: 'auto' }} viewBox={`0 0 ${W} ${H}`} />
       <div ref={tipRef} style={TOOLTIP_STYLE} />
       <ChartLegend entries={[
-        { label: 'Solar + Wind',  color: '#d97706' },
-        { label: 'All Clean (incl. Hydro + Nuclear)', color: '#16a34a', dash: '5 3' },
+        { label: 'Solar + Wind (variable renewables)',          color: '#d97706' },
+        { label: 'All Clean (+ hydro + nuclear)', color: '#16a34a', dash: '6 3' },
       ]} />
     </div>
   )

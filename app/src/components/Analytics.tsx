@@ -6,10 +6,11 @@ import { FUEL_COLORS, BA_DEFS } from '../data/ba'
 import { BaScatter }     from './charts/BaScatter'
 import { BaHourHeatmap } from './charts/BaHourHeatmap'
 import { GridTrend }     from './charts/GridTrend'
+import { ChartTitle, ChartModal } from './ChartTitle'
 import type { BaRanking } from '../types'
 
-type SortKey  = 'capacity' | 'carbon' | 'renewables' | 'clean'
-type ViewKey  = 'list' | 'scatter' | 'heatmap' | 'trends'
+type SortKey    = 'capacity' | 'carbon' | 'renewables' | 'clean'
+type ViewKey    = 'list' | 'scatter' | 'heatmap' | 'trends'
 type Granularity = 'day' | 'week' | 'month'
 
 const BA_OPTIONS = BA_DEFS.map(([id, name]) => ({ id, name: name as string }))
@@ -97,6 +98,28 @@ function barColor(r: BaRanking, key: SortKey): string {
   }
 }
 
+// ── shared button styles (matches Dispatch preset buttons) ────────────────
+
+const btnBase: React.CSSProperties = {
+  background:     'rgba(255,255,255,0.88)',
+  border:         '1px solid rgba(0,0,0,0.1)',
+  borderRadius:   8,
+  padding:        '7px 14px',
+  fontFamily:     'var(--font-mono)',
+  fontSize:       11,
+  color:          'rgba(0,0,0,0.65)',
+  cursor:         'pointer',
+  outline:        'none',
+  transition:     'all 0.14s ease',
+}
+
+const btnActive: React.CSSProperties = {
+  ...btnBase,
+  background:  'rgba(0,102,204,0.1)',
+  border:      '1px solid rgba(0,102,204,0.25)',
+  color:       '#0066cc',
+}
+
 // ── sub-components ────────────────────────────────────────────────────────
 
 function PillToggle<T extends string>({
@@ -106,7 +129,6 @@ function PillToggle<T extends string>({
   value: T
   onChange: (v: T) => void
 }) {
-  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
   return (
     <div style={{
       display: 'flex', gap: 4,
@@ -119,9 +141,9 @@ function PillToggle<T extends string>({
           background:    value === o.id ? 'white' : 'transparent',
           border:        value === o.id ? '1px solid rgba(0,0,0,0.09)' : '1px solid transparent',
           borderRadius:  999,
-          color:         value === o.id ? 'rgba(0,0,0,0.72)' : 'rgba(0,0,0,0.32)',
-          ...mono, fontSize: 9, letterSpacing: '0.16em',
-          textTransform: 'uppercase', padding: '6px 16px',
+          color:         value === o.id ? 'rgba(0,0,0,0.75)' : 'rgba(0,0,0,0.35)',
+          fontFamily:    'var(--font-mono)', fontSize: 11, letterSpacing: '0.12em',
+          textTransform: 'uppercase', padding: '7px 18px',
           cursor: 'pointer',
           boxShadow: value === o.id ? '0 1px 4px rgba(0,0,0,0.07)' : 'none',
           transition: 'all 0.14s ease',
@@ -133,23 +155,32 @@ function PillToggle<T extends string>({
   )
 }
 
+/** Preset-style buttons matching Dispatch (rectangular, not pill) */
+function PresetButtons<T extends string | number>({
+  options, value, onChange,
+}: {
+  options: { id: T; label: string }[]
+  value:   T
+  onChange: (v: T) => void
+}) {
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {options.map(o => (
+        <button
+          key={String(o.id)}
+          onClick={() => onChange(o.id)}
+          style={value === o.id ? btnActive : btnBase}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 function BaSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      style={{
-        background: 'rgba(255,255,255,0.88)',
-        border: '1px solid rgba(0,0,0,0.1)',
-        borderRadius: 8,
-        padding: '6px 10px',
-        fontFamily: 'var(--font-mono)',
-        fontSize: 11,
-        color: '#1a1a1a',
-        cursor: 'pointer',
-        outline: 'none',
-      }}
-    >
+    <select value={value} onChange={e => onChange(e.target.value)} style={btnBase}>
       {BA_OPTIONS.map(o => (
         <option key={o.id} value={o.id}>{o.id} — {o.name}</option>
       ))}
@@ -157,11 +188,12 @@ function BaSelect({ value, onChange }: { value: string; onChange: (v: string) =>
   )
 }
 
+
 function FuelMiniBar({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: number }) {
   const sorted = [...fuels].sort((a, b) => b.mw - a.mw)
   return (
     <div style={{
-      display: 'flex', width: 52, height: 5,
+      display: 'flex', width: 60, height: 6,
       borderRadius: 999, overflow: 'hidden', flexShrink: 0,
     }}>
       {sorted.map(({ fuel, mw }) => (
@@ -176,26 +208,22 @@ function FuelMiniBar({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: n
 
 function FuelDetail({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: number }) {
   const sorted = [...fuels].sort((a, b) => b.mw - a.mw)
-  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
   return (
-    <div style={{
-      padding: '10px 18px 14px 108px',
-      borderTop: '1px solid rgba(0,0,0,0.04)',
-    }}>
+    <div style={{ padding: '12px 20px 16px 120px', borderTop: '1px solid rgba(0,0,0,0.05)' }}>
       {sorted.map(({ fuel, mw }) => {
         const pct = totalMw > 0 ? (mw / totalMw) * 100 : 0
         const fc  = FUEL_COLORS[fuel] ?? '#6b7280'
         return (
-          <div key={fuel} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-            <div style={{ width: 6, height: 6, borderRadius: '50%', background: fc, flexShrink: 0 }} />
-            <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.4)', width: 48 }}>{fuel}</div>
+          <div key={fuel} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: fc, flexShrink: 0 }} />
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.45)', width: 52 }}>{fuel}</div>
             <div style={{ flex: 1, height: 4, background: 'rgba(0,0,0,0.05)', borderRadius: 999, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${pct}%`, background: fc, borderRadius: 999 }} />
             </div>
-            <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.38)', width: 48, textAlign: 'right' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.55)', width: 56, textAlign: 'right' }}>
               {fmtMw(mw)}
             </div>
-            <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.22)', width: 30, textAlign: 'right' }}>
+            <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.3)', width: 34, textAlign: 'right' }}>
               {pct.toFixed(0)}%
             </div>
           </div>
@@ -205,40 +233,84 @@ function FuelDetail({ fuels, totalMw }: { fuels: BaRanking['fuels']; totalMw: nu
   )
 }
 
+// ── shared expand button ──────────────────────────────────────────────────
+
+function ExpandBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title="Expand chart"
+      style={{
+        width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+        border: '1px solid rgba(0,0,0,0.1)',
+        background: 'rgba(0,0,0,0.03)',
+        color: 'rgba(0,0,0,0.35)',
+        cursor: 'pointer', padding: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all 0.12s ease',
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,102,204,0.08)'
+        ;(e.currentTarget as HTMLButtonElement).style.color = '#0066cc'
+        ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,102,204,0.2)'
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(0,0,0,0.03)'
+        ;(e.currentTarget as HTMLButtonElement).style.color = 'rgba(0,0,0,0.35)'
+        ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(0,0,0,0.1)'
+      }}
+    >
+      <svg width={12} height={12} viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+        <path d="M8 1.5h3.5V5M5 11.5H1.5V8M11.5 1.5l-4 4M1.5 11.5l4-4" />
+      </svg>
+    </button>
+  )
+}
+
 // ── heatmap panel ─────────────────────────────────────────────────────────
 
+const HEATMAP_TITLE = "Carbon Intensity by Hour & Day"
+const HEATMAP_EXPL  = "Average carbon intensity (g CO₂/kWh) for each hour and day of week. Green = cleaner electricity, red = more carbon-heavy. Use it to find the best times to shift heavy loads."
+
 function HeatmapPanel() {
-  const [ba,   setBa]   = useState('CISO')
-  const [days, setDays] = useState(30)
+  const [ba,       setBa]       = useState('CISO')
+  const [days,     setDays]     = useState(30)
+  const [expanded, setExpanded] = useState(false)
   const { cells, loading, fetching } = useHeatmapData(ba, days)
-  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <ChartTitle title={HEATMAP_TITLE} explanation={HEATMAP_EXPL} />
+        {cells.length > 0 && <ExpandBtn onClick={() => setExpanded(true)} />}
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <BaSelect value={ba} onChange={setBa} />
-        <PillToggle
-          options={HEATMAP_DAYS.map(d => ({ id: String(d.days) as string, label: d.label }))}
-          value={String(days)}
+        <PresetButtons
+          options={HEATMAP_DAYS.map(d => ({ id: d.days, label: d.label }))}
+          value={days}
           onChange={v => setDays(Number(v))}
         />
         {fetching && !loading && (
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.25)' }}>loading…</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.3)' }}>loading…</span>
         )}
       </div>
-      <div style={{ ...mono, fontSize: 10, color: 'rgba(0,0,0,0.3)', marginBottom: 12 }}>
-        carbon intensity by hour-of-day × day-of-week &nbsp;·&nbsp; color = avg g CO₂/kWh
-      </div>
       {loading ? (
-        <div style={{ height: 340, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>loading…</span>
+        <div style={{ height: 380, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.25)' }}>loading…</span>
         </div>
       ) : cells.length === 0 ? (
-        <div style={{ height: 340, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>no parquet data yet — accumulating…</span>
+        <div style={{ height: 380, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.25)' }}>no parquet data yet — accumulating…</span>
         </div>
       ) : (
         <BaHourHeatmap cells={cells} />
+      )}
+
+      {expanded && (
+        <ChartModal title={HEATMAP_TITLE} explanation={HEATMAP_EXPL} onClose={() => setExpanded(false)}>
+          <BaHourHeatmap cells={cells} />
+        </ChartModal>
       )}
     </>
   )
@@ -246,56 +318,81 @@ function HeatmapPanel() {
 
 // ── trends panel ──────────────────────────────────────────────────────────
 
+const TRENDS_TITLE = "Clean Energy & Carbon Trend"
+const TRENDS_EXPL  = "Clean % (green), renewable % (blue dashed), and carbon intensity (red, right axis) over time. A rising green line or falling red line means the grid is getting cleaner."
+
 function TrendsPanel() {
-  const [gran, setGran] = useState<Granularity>('month')
-  const [ba,   setBa]   = useState('')   // empty = all BAs
+  const [gran,     setGran]     = useState<Granularity>('month')
+  const [ba,       setBa]       = useState('')
+  const [expanded, setExpanded] = useState(false)
   const { points, loading, fetching } = useTrendData(gran, ba || undefined)
-  const mono: React.CSSProperties = { fontFamily: 'var(--font-mono)' }
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <ChartTitle title={TRENDS_TITLE} explanation={TRENDS_EXPL} />
+        {points.length > 0 && <ExpandBtn onClick={() => setExpanded(true)} />}
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <PillToggle options={GRANULARITIES} value={gran} onChange={setGran} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.3)' }}>BA</span>
-          <select
-            value={ba}
-            onChange={e => setBa(e.target.value)}
-            style={{
-              background: 'rgba(255,255,255,0.88)',
-              border: '1px solid rgba(0,0,0,0.1)',
-              borderRadius: 8,
-              padding: '6px 10px',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: '#1a1a1a',
-              cursor: 'pointer',
-              outline: 'none',
-            }}
-          >
-            <option value=''>all BAs</option>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.4)' }}>BA</span>
+          <select value={ba} onChange={e => setBa(e.target.value)} style={btnBase}>
+            <option value=''>all BAs (grid-wide)</option>
             {BA_OPTIONS.map(o => (
               <option key={o.id} value={o.id}>{o.id} — {o.name}</option>
             ))}
           </select>
         </div>
         {fetching && !loading && (
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.25)' }}>loading…</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.3)' }}>loading…</span>
         )}
       </div>
-      <div style={{ ...mono, fontSize: 10, color: 'rgba(0,0,0,0.3)', marginBottom: 12 }}>
-        {ba ? `${ba} trend` : 'grid-wide trend'} &nbsp;·&nbsp; clean% / renewable% / carbon intensity over time
-      </div>
       {loading ? (
-        <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>loading…</span>
+        <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.25)' }}>loading…</span>
         </div>
       ) : points.length === 0 ? (
-        <div style={{ height: 260, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.2)' }}>no parquet data yet — accumulating…</span>
+        <div style={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.25)' }}>no parquet data yet — accumulating…</span>
         </div>
       ) : (
-        <GridTrend points={points} />
+        <GridTrend points={points} granularity={gran} />
+      )}
+
+      {expanded && (
+        <ChartModal title={TRENDS_TITLE} explanation={TRENDS_EXPL} onClose={() => setExpanded(false)}>
+          <GridTrend points={points} granularity={gran} />
+        </ChartModal>
+      )}
+    </>
+  )
+}
+
+// ── scatter card ─────────────────────────────────────────────────────────
+
+const SCATTER_TITLE = "Carbon vs Clean Energy"
+const SCATTER_EXPL  = "Each circle is a balancing authority, sized by output. Top-left = cleanest (low carbon, high clean %). Bottom-right = dirtiest. Green and red shading mark the quadrant boundaries."
+
+function ScatterCard({ rankings }: { rankings: BaRanking[] }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <>
+      <div style={{
+        background: 'rgba(255,255,255,0.75)',
+        border: '1px solid rgba(0,0,0,0.07)',
+        borderRadius: 12, padding: '24px 20px 16px',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <ChartTitle title={SCATTER_TITLE} explanation={SCATTER_EXPL} />
+          <ExpandBtn onClick={() => setExpanded(true)} />
+        </div>
+        <BaScatter rankings={rankings} />
+      </div>
+      {expanded && (
+        <ChartModal title={SCATTER_TITLE} explanation={SCATTER_EXPL} onClose={() => setExpanded(false)}>
+          <BaScatter rankings={rankings} />
+        </ChartModal>
       )}
     </>
   )
@@ -314,11 +411,10 @@ export function Analytics() {
   if (loading || !analytics) {
     return (
       <div style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(248,248,248,0.97)',
+        position: 'fixed', inset: 0, background: 'rgba(248,248,248,0.97)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
-        <div style={{ ...mono, fontSize: 9, letterSpacing: '0.2em', color: 'rgba(0,0,0,0.2)' }}>
+        <div style={{ ...mono, fontSize: 11, letterSpacing: '0.2em', color: 'rgba(0,0,0,0.3)' }}>
           loading analytics…
         </div>
       </div>
@@ -330,20 +426,20 @@ export function Analytics() {
   const maxVal = maxMetric(rankings, sort)
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#f7f7f7', overflowY: 'auto' }}>
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '40px 24px 80px' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(248,248,248,0.97)', overflowY: 'auto' }}>
+      <div style={{ maxWidth: 960, margin: '0 auto', padding: '72px 32px 80px' }}>
 
         {/* Header */}
         <div style={{
-          ...mono, fontSize: 10, letterSpacing: '0.22em',
-          textTransform: 'uppercase', color: 'rgba(0,0,0,0.3)',
-          marginBottom: 22,
+          ...mono, fontSize: 13, fontWeight: 600,
+          color: 'rgba(0,0,0,0.65)',
+          marginBottom: 24,
         }}>
           {rankings.length} balancing authorities
         </div>
 
         {/* View + sort toggles */}
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
           <PillToggle options={VIEWS} value={view} onChange={v => { setView(v); setExpandedBa(null) }} />
           {view === 'list' && (
             <PillToggle options={SORTS} value={sort} onChange={setSort} />
@@ -359,9 +455,9 @@ export function Analytics() {
           }}>
             {ranked.map((r, i) => {
               const { raw, label } = metricOf(r, sort)
-              const barW    = maxVal > 0 ? (raw / maxVal) * 100 : 0
-              const isOpen  = expandedBa === r.ba
-              const isLast  = i === ranked.length - 1
+              const barW   = maxVal > 0 ? (raw / maxVal) * 100 : 0
+              const isOpen = expandedBa === r.ba
+              const isLast = i === ranked.length - 1
 
               return (
                 <div key={r.ba} style={{
@@ -371,28 +467,37 @@ export function Analytics() {
                     onClick={() => setExpandedBa(isOpen ? null : r.ba)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: 14,
-                      padding: '10px 18px',
+                      padding: '13px 20px',
                       cursor: 'pointer',
                       background: isOpen ? 'rgba(0,0,0,0.015)' : 'transparent',
                       transition: 'background 0.1s ease',
                     }}
                   >
-                    <div style={{ ...mono, fontSize: 9, color: 'rgba(0,0,0,0.18)', width: 22, textAlign: 'right', flexShrink: 0 }}>
+                    {/* Rank */}
+                    <div style={{ ...mono, fontSize: 11, color: 'rgba(0,0,0,0.25)', width: 24, textAlign: 'right', flexShrink: 0 }}>
                       {i + 1}
                     </div>
+
+                    {/* Mini fuel bar */}
                     <FuelMiniBar fuels={r.fuels} totalMw={r.totalMw} />
-                    <div style={{ flex: '0 0 50px' }}>
-                      <div style={{ ...mono, fontSize: 11, fontWeight: 600, color: 'rgba(0,0,0,0.76)' }}>
+
+                    {/* BA ticker */}
+                    <div style={{ flex: '0 0 56px' }}>
+                      <div style={{ ...mono, fontSize: 13, fontWeight: 700, color: 'rgba(0,0,0,0.8)' }}>
                         {r.ba}
                       </div>
                     </div>
+
+                    {/* Full label */}
                     <div style={{
-                      ...mono, fontSize: 9, color: 'rgba(0,0,0,0.32)',
-                      flex: '1 1 150px', overflow: 'hidden',
+                      ...mono, fontSize: 11, color: 'rgba(0,0,0,0.45)',
+                      flex: '1 1 160px', overflow: 'hidden',
                       textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
                       {r.label}
                     </div>
+
+                    {/* Metric bar + value */}
                     <div style={{ flex: '2 1 200px', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{
                         flex: 1, height: 5, background: 'rgba(0,0,0,0.06)',
@@ -406,21 +511,25 @@ export function Analytics() {
                         }} />
                       </div>
                       <div style={{
-                        ...mono, fontSize: 10, color: 'rgba(0,0,0,0.5)',
-                        width: 72, textAlign: 'right', flexShrink: 0,
+                        ...mono, fontSize: 12, fontWeight: 500,
+                        color: 'rgba(0,0,0,0.65)',
+                        width: 80, textAlign: 'right', flexShrink: 0,
                       }}>
                         {label}
                       </div>
                     </div>
+
+                    {/* Expand chevron */}
                     <div style={{
-                      ...mono, fontSize: 9, color: 'rgba(0,0,0,0.18)',
-                      width: 10, flexShrink: 0,
+                      ...mono, fontSize: 12, color: 'rgba(0,0,0,0.22)',
+                      width: 12, flexShrink: 0,
                       transform: isOpen ? 'rotate(90deg)' : 'none',
                       transition: 'transform 0.15s ease',
                     }}>
                       ›
                     </div>
                   </div>
+
                   {isOpen && <FuelDetail fuels={r.fuels} totalMw={r.totalMw} />}
                 </div>
               )
@@ -430,16 +539,7 @@ export function Analytics() {
 
         {/* ── Scatter view ───────────────────────────────────────────── */}
         {view === 'scatter' && (
-          <div style={{
-            background: 'rgba(255,255,255,0.75)',
-            border: '1px solid rgba(0,0,0,0.07)',
-            borderRadius: 12, padding: '20px 16px 12px',
-          }}>
-            <div style={{ ...mono, fontSize: 11, color: 'rgba(0,0,0,0.3)', marginBottom: 16 }}>
-              carbon intensity vs clean energy &nbsp;·&nbsp; circle size ∝ √(generation)
-            </div>
-            <BaScatter rankings={rankings} />
-          </div>
+          <ScatterCard rankings={rankings} />
         )}
 
         {/* ── Heatmap view ───────────────────────────────────────────── */}
@@ -447,7 +547,7 @@ export function Analytics() {
           <div style={{
             background: 'rgba(255,255,255,0.75)',
             border: '1px solid rgba(0,0,0,0.07)',
-            borderRadius: 12, padding: '20px 16px 12px',
+            borderRadius: 12, padding: '24px 20px 16px',
           }}>
             <HeatmapPanel />
           </div>
@@ -458,7 +558,7 @@ export function Analytics() {
           <div style={{
             background: 'rgba(255,255,255,0.75)',
             border: '1px solid rgba(0,0,0,0.07)',
-            borderRadius: 12, padding: '20px 16px 12px',
+            borderRadius: 12, padding: '24px 20px 16px',
           }}>
             <TrendsPanel />
           </div>

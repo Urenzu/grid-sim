@@ -8,7 +8,7 @@ import {
 } from './chartUtils'
 import { ChartLegend } from './ChartLegend'
 
-const W = 520, H = 210, M = { top: 12, right: 16, bottom: 26, left: 54 }
+const W = 560, H = 280, M = { top: 16, right: 20, bottom: 40, left: 64 }
 const FUELS = ['coal', 'gas', 'other', 'hydro', 'nuclear', 'wind', 'solar']
 
 type FuelRow = { period: string } & { [fuel: string]: number | string }
@@ -26,7 +26,7 @@ export function FuelMixArea({ data }: Props) {
     svg.selectAll('*').remove()
 
     const iw = W - M.left - M.right
-    const ih = H - M.top - M.bottom
+    const ih = H - M.top  - M.bottom
 
     const rows: FuelRow[] = data.map(d => {
       const row: FuelRow = { period: d.period }
@@ -52,6 +52,15 @@ export function FuelMixArea({ data }: Props) {
     drawYAxis(g, y, iw, d => `${(+d / 1000).toFixed(0)} GW`)
     drawTimeAxis(g.append('g').attr('transform', `translate(0,${ih})`), x, cfg, -ih, iw)
 
+    // Y-axis label
+    g.append('text')
+      .attr('transform', 'rotate(-90)')
+      .attr('x', -(ih / 2)).attr('y', -50)
+      .attr('text-anchor', 'middle')
+      .attr('font-size', 11).attr('font-family', 'IBM Plex Mono, monospace')
+      .attr('fill', 'rgba(0,0,0,0.5)')
+      .text('gigawatts (GW)')
+
     const area = d3.area<d3.SeriesPoint<FuelRow>>()
       .x(d => x(parseEiaPeriod((d.data as FuelRow).period as string)))
       .y0(d => y(d[0])).y1(d => y(d[1]))
@@ -60,13 +69,13 @@ export function FuelMixArea({ data }: Props) {
     for (const s of series) {
       g.append('path').datum(s)
         .attr('fill', FUEL_COLORS[s.key] ?? '#6b7280')
-        .attr('opacity', 0.82).attr('d', area)
+        .attr('opacity', 0.85).attr('d', area)
     }
 
     // ── Hover ─────────────────────────────────────────────────────────────
     const crosshair = g.append('line')
       .attr('y1', 0).attr('y2', ih)
-      .attr('stroke', 'rgba(0,0,0,0.15)').attr('stroke-width', 1)
+      .attr('stroke', 'rgba(0,0,0,0.18)').attr('stroke-width', 1)
       .style('opacity', 0).attr('pointer-events', 'none')
 
     const bisect = d3.bisector<FuelRow, Date>(d => parseEiaPeriod(d.period as string)).left
@@ -97,17 +106,17 @@ export function FuelMixArea({ data }: Props) {
 
         const tip = tipRef.current!
         tip.innerHTML = `
-          <div style="font-size:10px;color:rgba(0,0,0,0.38);letter-spacing:0.04em;margin-bottom:7px">
+          <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">
             ${fmtTooltipTime(parseEiaPeriod(row.period as string))}
           </div>
           ${fuelsWithMw.map(({ fuel, mw }) => `
-            <div style="display:flex;justify-content:space-between;gap:18px;margin-bottom:3px">
+            <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:4px">
               <span style="color:${FUEL_COLORS[fuel] ?? '#6b7280'}">${fuel}</span>
-              <span style="color:rgba(0,0,0,0.65);font-weight:500">${fmtMW(mw)}</span>
+              <span style="font-weight:600">${fmtMW(mw)}</span>
             </div>`).join('')}
-          <div style="border-top:1px solid rgba(0,0,0,0.07);margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;gap:18px">
-            <span style="color:rgba(0,0,0,0.4)">total</span>
-            <span style="color:rgba(0,0,0,0.65);font-weight:500">${fmtMW(totalMw)}</span>
+          <div style="border-top:1px solid rgba(0,0,0,0.1);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;gap:20px">
+            <span style="color:rgba(0,0,0,0.55)">total</span>
+            <span style="font-weight:600">${fmtMW(totalMw)}</span>
           </div>
         `
         tip.style.opacity = '1'
@@ -121,7 +130,7 @@ export function FuelMixArea({ data }: Props) {
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>
-      <svg ref={svgRef} style={{ width: '100%', height: H }} viewBox={`0 0 ${W} ${H}`} />
+      <svg ref={svgRef} style={{ width: '100%', height: 'auto' }} viewBox={`0 0 ${W} ${H}`} />
       <div ref={tipRef} style={TOOLTIP_STYLE} />
       <ChartLegend entries={FUELS.map(f => ({
         label:  f,
