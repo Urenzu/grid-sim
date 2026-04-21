@@ -26,10 +26,11 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 WORKDIR /app
 COPY --from=builder /build/target/release/server ./server
 COPY --from=frontend /app/dist ./dist
-
-RUN mkdir -p /data
+COPY data/ /seed/
 
 EXPOSE 3000
 ENV RUST_LOG=info
 
-CMD ["./server", "--data-dir", "/data"]
+# On first boot the Railway volume at /data is empty — seed it from the
+# bundled historical Parquet files. Subsequent boots skip the copy.
+CMD ["sh", "-c", "if [ -z \"$(ls -A /data 2>/dev/null)\" ]; then echo 'Seeding /data from image...' && cp -r /seed/. /data/; fi && ./server --data-dir /data"]
