@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 
 use types::AppState;
 
@@ -55,6 +56,8 @@ async fn main() -> Result<()> {
         async move { handlers::smart_data_task(state).await }
     });
 
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "dist".to_string());
+
     let app = Router::new()
         .route("/health",                get(handlers::health_handler))
         .route("/api/interchange",       get(handlers::interchange_handler))
@@ -68,7 +71,8 @@ async fn main() -> Result<()> {
         .route("/api/heatmap",           get(handlers::heatmap_handler))
         .route("/api/trends",            get(handlers::trends_handler))
         .layer(CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state)
+        .fallback_service(ServeDir::new(&static_dir));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await?;
     tracing::info!("listening on http://localhost:3000");
