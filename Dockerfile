@@ -21,9 +21,9 @@ COPY crates/ crates/
 
 # Cache cargo registry and compiled deps across builds so only your
 # source code recompiles on each push.
-RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=cargo-target,target=/build/target \
+RUN --mount=type=cache,id=grid-sim-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=grid-sim-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=grid-sim-cargo-target,target=/build/target \
     cargo build --release -p server && \
     cp /build/target/release/server /usr/local/bin/server
 
