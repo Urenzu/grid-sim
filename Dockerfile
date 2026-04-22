@@ -7,7 +7,7 @@ COPY app/ ./
 RUN npm run build
 
 # ── Stage 2: Build Rust server ─────────────────────────────────────────────
-FROM rust:latest-slim-bookworm AS builder
+FROM rust:1.88-slim-bookworm AS builder
 WORKDIR /build
 
 # duckdb bundled feature compiles libduckdb from source — needs cmake + C++
