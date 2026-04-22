@@ -21,9 +21,9 @@ COPY crates/ crates/
 
 # Cache cargo registry and compiled deps across builds so only your
 # source code recompiles on each push.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
+RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=cargo-target,target=/build/target \
     cargo build --release -p server && \
     cp /build/target/release/server /usr/local/bin/server
 
@@ -40,21 +40,12 @@ RUN apt-get update && apt-get install -y ca-certificates curl unzip && \
 WORKDIR /app
 COPY --from=builder /usr/local/bin/server ./server
 COPY --from=frontend /app/dist ./dist
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 RUN mkdir -p /data
 
 EXPOSE 3000
 ENV RUST_LOG=info
 
-# On first boot the Railway volume at /data is empty — pull historical
-# Parquet files from R2. Subsequent boots skip the sync.
-CMD ["sh", "-c", "\
-  if [ -z \"$(ls -A /data 2>/dev/null)\" ]; then \
-    echo 'Seeding /data from R2...' && \
-    AWS_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID} \
-    AWS_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY} \
-    aws s3 sync s3://${R2_BUCKET}/ /data/ \
-      --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com \
-      --region auto --no-progress && \
-    echo 'Seed complete.'; \
-  fi && ./server --data-dir /data"]
+CMD ["./entrypoint.sh"]
