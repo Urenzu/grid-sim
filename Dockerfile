@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # ── Stage 1: Build frontend ────────────────────────────────────────────────
 FROM node:20-alpine AS frontend
 WORKDIR /app
@@ -10,7 +12,6 @@ RUN npm run build
 FROM rust:1.88-slim-bookworm AS builder
 WORKDIR /build
 
-# duckdb bundled feature compiles libduckdb from source — needs cmake + C++
 RUN apt-get update && apt-get install -y \
     cmake g++ pkg-config libssl-dev \
     && rm -rf /var/lib/apt/lists/*
@@ -18,17 +19,13 @@ RUN apt-get update && apt-get install -y \
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
-# Build deps first with dummy entry points so this layer gets cached.
-# Railway only re-runs this when Cargo.toml/Cargo.lock change.
-RUN mkdir -p crates/server/src crates/backfill/src && \
-    echo "fn main() {}" > crates/server/src/main.rs && \
-    echo "fn main() {}" > crates/backfill/src/main.rs && \
-    cargo build --release -p server -j2 && \
-    rm -rf crates/server/src crates/backfill/src
-
-# Now build with real source — only your code recompiles on each push
-COPY crates/ crates/
-RUN touch crates/server/src/main.rs && cargo build --release -p server -j2
+# Cache cargo registry and compiled deps across builds so only your
+# source code recompiles on each push.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build --release -p server && \
+    cp /build/target/release/server /usr/local/bin/server
 
 # ── Stage 3: Runtime image ─────────────────────────────────────────────────
 FROM debian:bookworm-slim
@@ -41,7 +38,7 @@ RUN apt-get update && apt-get install -y ca-certificates curl unzip && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-COPY --from=builder /build/target/release/server ./server
+COPY --from=builder /usr/local/bin/server ./server
 COPY --from=frontend /app/dist ./dist
 
 RUN mkdir -p /data
