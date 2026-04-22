@@ -1,0 +1,50 @@
+name: Daily Backfill
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 6 AM UTC — EIA data for prior days is reliably available by then
+  workflow_dispatch:      # Allow manual runs from the Actions tab
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Cache compiled dependencies so only your code recompiles on each run
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Build backfill binary
+        run: cargo build --release -p backfill
+
+      # Fetch the last 3 days on each run — catches late-arriving EIA revisions
+      # and is idempotent (safe to re-run; existing files are overwritten on upload)
+      - name: Run backfill
+        env:
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: |
+          START=$(date -u -d "3 days ago" +%Y-%m-%d)
+          END=$(date -u -d "yesterday" +%Y-%m-%d)
+          echo "Backfilling $START → $END"
+          ./target/release/backfill --data-dir ./data --start "$START" --end "$END"
+
+      # aws CLI is pre-installed on ubuntu-latest
+      - name: Sync new parquet files to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 sync ./data/ "s3://${{ secrets.R2_BUCKET }}/" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
+            --region auto \
+            --no-progress
