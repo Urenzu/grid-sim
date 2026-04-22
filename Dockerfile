@@ -17,7 +17,18 @@ RUN apt-get update && apt-get install -y \
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
-RUN cargo build --release -p server -j2
+
+# Build deps first with dummy entry points so this layer gets cached.
+# Railway only re-runs this when Cargo.toml/Cargo.lock change.
+RUN mkdir -p crates/server/src crates/backfill/src && \
+    echo "fn main() {}" > crates/server/src/main.rs && \
+    echo "fn main() {}" > crates/backfill/src/main.rs && \
+    cargo build --release -p server -j2 && \
+    rm -rf crates/server/src crates/backfill/src
+
+# Now build with real source — only your code recompiles on each push
+COPY crates/ crates/
+RUN touch crates/server/src/main.rs && cargo build --release -p server -j2
 
 # ── Stage 3: Runtime image ─────────────────────────────────────────────────
 FROM debian:bookworm-slim
