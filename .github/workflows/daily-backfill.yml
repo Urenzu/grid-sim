@@ -48,3 +48,6 @@ jobs:
             --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com" \
             --region auto \
             --no-progress
+
+      - name: Trigger Railway redeploy
+        run: curl -sX POST "${{ secrets.RAILWAY_DEPLOY_HOOK_URL }}"

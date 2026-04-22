@@ -56,6 +56,8 @@ async fn main() -> Result<()> {
         async move { handlers::smart_data_task(state).await }
     });
 
+    tokio::spawn(handlers::r2_sync_task(state.data_dir.clone()));
+
     let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "dist".to_string());
 
     let app = Router::new()

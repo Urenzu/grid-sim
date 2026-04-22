@@ -239,6 +239,67 @@ pub(crate) async fn trends_handler(
     Ok(Json(points))
 }
 
+// ── R2 sync ───────────────────────────────────────────────────────────────
+
+struct R2Config {
+    access_key: String,
+    secret_key: String,
+    account_id: String,
+    bucket:     String,
+}
+
+impl R2Config {
+    fn from_env() -> Option<Self> {
+        Some(Self {
+            access_key: std::env::var("R2_ACCESS_KEY_ID").ok()?,
+            secret_key: std::env::var("R2_SECRET_ACCESS_KEY").ok()?,
+            account_id: std::env::var("R2_ACCOUNT_ID").ok()?,
+            bucket:     std::env::var("R2_BUCKET").ok()?,
+        })
+    }
+}
+
+async fn sync_to_r2(data_dir: &std::path::Path, cfg: &R2Config) {
+    tracing::info!("r2 sync: starting");
+    let result = tokio::process::Command::new("aws")
+        .args(["s3", "sync"])
+        .arg(data_dir)
+        .arg(format!("s3://{}/", cfg.bucket))
+        .args(["--endpoint-url", &format!("https://{}.r2.cloudflarestorage.com", cfg.account_id)])
+        .args(["--region", "auto", "--no-progress"])
+        .env("AWS_ACCESS_KEY_ID",     &cfg.access_key)
+        .env("AWS_SECRET_ACCESS_KEY", &cfg.secret_key)
+        .output()
+        .await;
+
+    match result {
+        Ok(out) if out.status.success() => tracing::info!("r2 sync: complete"),
+        Ok(out) => tracing::warn!("r2 sync: failed — {}", String::from_utf8_lossy(&out.stderr)),
+        Err(e)  => tracing::warn!("r2 sync: error — {e:#}"),
+    }
+}
+
+/// Pushes /data/ to R2 once a day at midnight UTC so R2 stays current.
+pub(crate) async fn r2_sync_task(data_dir: std::path::PathBuf) {
+    let cfg = match R2Config::from_env() {
+        Some(c) => c,
+        None    => { tracing::info!("R2 env vars not set — skipping r2 sync task"); return; }
+    };
+
+    loop {
+        let now      = Utc::now();
+        let midnight = (now + chrono::Duration::days(1))
+            .date_naive().and_hms_opt(0, 0, 0).unwrap();
+        let until    = chrono::DateTime::<Utc>::from_naive_utc_and_offset(midnight, Utc);
+        let secs     = (until - now).num_seconds().max(0) as u64;
+
+        tracing::info!("r2 sync: next push in {}s (midnight UTC)", secs);
+        tokio::time::sleep(Duration::from_secs(secs)).await;
+
+        sync_to_r2(&data_dir, &cfg).await;
+    }
+}
+
 // ── Smart data task ────────────────────────────────────────────────────────
 //
 // On startup:
@@ -256,9 +317,10 @@ pub(crate) async fn smart_data_task(state: Arc<AppState>) {
     let yesterday = today - chrono::Duration::days(1);
 
     // ── Phase 1: gap-fill ─────────────────────────────────────────────────
-    match latest_local_date(&data_dir) {
+    let gap_filled = match latest_local_date(&data_dir) {
         None => {
             tracing::info!("no local Parquet found — accumulating from today");
+            false
         }
         Some(latest) if latest < yesterday => {
             let gap = (yesterday - latest).num_days();
@@ -273,9 +335,18 @@ pub(crate) async fn smart_data_task(state: Arc<AppState>) {
                 d += chrono::Duration::days(1);
             }
             tracing::info!("gap-fill complete");
+            true
         }
         Some(latest) => {
             tracing::info!("up to date, latest local date: {}", latest);
+            false
+        }
+    };
+
+    // Push gap-filled data to R2 immediately so it's available for future cold starts
+    if gap_filled {
+        if let Some(cfg) = R2Config::from_env() {
+            sync_to_r2(&data_dir, &cfg).await;
         }
     }
 
