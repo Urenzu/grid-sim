@@ -7,7 +7,7 @@ COPY app/ ./
 RUN npm run build
 
 # ── Stage 2: Build Rust server ─────────────────────────────────────────────
-FROM rust:1.88-slim-bookworm AS builder
+FROM rust:latest-slim-bookworm AS builder
 WORKDIR /build
 
 # duckdb bundled feature compiles libduckdb from source — needs cmake + C++
@@ -17,20 +17,36 @@ RUN apt-get update && apt-get install -y \
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
-RUN cargo build --release -p server
+RUN cargo build --release -p server -j2
 
 # ── Stage 3: Runtime image ─────────────────────────────────────────────────
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+
+# AWS CLI for seeding /data from R2 on first boot
+RUN apt-get update && apt-get install -y ca-certificates curl unzip && \
+    curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "/tmp/awscliv2.zip" && \
+    unzip /tmp/awscliv2.zip -d /tmp && /tmp/aws/install && \
+    rm -rf /tmp/awscliv2.zip /tmp/aws && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /build/target/release/server ./server
 COPY --from=frontend /app/dist ./dist
-COPY data/ /seed/
+
+RUN mkdir -p /data
 
 EXPOSE 3000
 ENV RUST_LOG=info
 
-# On first boot the Railway volume at /data is empty — seed it from the
-# bundled historical Parquet files. Subsequent boots skip the copy.
-CMD ["sh", "-c", "if [ -z \"$(ls -A /data 2>/dev/null)\" ]; then echo 'Seeding /data from image...' && cp -r /seed/. /data/; fi && ./server --data-dir /data"]
+# On first boot the Railway volume at /data is empty — pull historical
+# Parquet files from R2. Subsequent boots skip the sync.
+CMD ["sh", "-c", "\
+  if [ -z \"$(ls -A /data 2>/dev/null)\" ]; then \
+    echo 'Seeding /data from R2...' && \
+    AWS_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID} \
+    AWS_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY} \
+    aws s3 sync s3://${R2_BUCKET}/ /data/ \
+      --endpoint-url https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com \
+      --region auto --no-progress && \
+    echo 'Seed complete.'; \
+  fi && ./server --data-dir /data"]
