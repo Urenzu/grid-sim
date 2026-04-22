@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ── Stage 1: Build frontend ────────────────────────────────────────────────
 FROM node:20-alpine AS frontend
 WORKDIR /app
@@ -19,13 +17,19 @@ RUN apt-get update && apt-get install -y \
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 
-# Cache cargo registry and compiled deps across builds so only your
-# source code recompiles on each push.
-RUN --mount=type=cache,id=grid-sim-cargo-registry,target=/usr/local/cargo/registry \
-    --mount=type=cache,id=grid-sim-cargo-git,target=/usr/local/cargo/git \
-    --mount=type=cache,id=grid-sim-cargo-target,target=/build/target \
+# Build deps with dummy entry points — this layer is cached by Railway
+# as long as Cargo.toml/Cargo.lock don't change.
+RUN mkdir -p crates/server/src crates/backfill/src && \
+    echo "fn main() {}" > crates/server/src/main.rs && \
+    echo "fn main() {}" > crates/backfill/src/main.rs && \
     cargo build --release -p server && \
-    cp /build/target/release/server /usr/local/bin/server
+    rm -rf crates/server/src crates/backfill/src
+
+# Copy real source and recompile — only your code runs here on each push.
+COPY crates/ crates/
+RUN touch crates/server/src/main.rs && \
+    cargo build --release -p server && \
+    cp target/release/server /usr/local/bin/server
 
 # ── Stage 3: Runtime image ─────────────────────────────────────────────────
 FROM debian:bookworm-slim
