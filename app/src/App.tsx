@@ -81,19 +81,19 @@ export default function App() {
       <div style={{
         position: 'fixed', top: 16, right: 16, zIndex: 30,
         display: 'flex', gap: 4,
-        background: 'rgba(255,255,255,0.85)',
+        background: 'rgba(17,17,24,0.85)',
         backdropFilter: 'blur(24px)',
         WebkitBackdropFilter: 'blur(24px)',
-        border: '1px solid rgba(0,0,0,0.08)',
+        border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: 999, padding: 4,
         boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
       }}>
         {VIEWS.map(v => (
           <button key={v.id} onClick={() => handleViewToggle(v.id)} style={{
-            background: view === v.id ? 'rgba(0,102,204,0.08)' : 'transparent',
-            border: view === v.id ? '1px solid rgba(0,102,204,0.2)' : '1px solid transparent',
+            background: view === v.id ? 'rgba(0,212,255,0.08)' : 'transparent',
+            border: view === v.id ? '1px solid rgba(0,212,255,0.25)' : '1px solid transparent',
             borderRadius: 999,
-            color: view === v.id ? '#0066cc' : 'rgba(0,0,0,0.45)',
+            color: view === v.id ? '#00d4ff' : 'rgba(232,232,240,0.4)',
             fontFamily: 'var(--font-mono)',
             fontSize: 11,
             letterSpacing: '0.16em',
