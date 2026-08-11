@@ -13,9 +13,9 @@ const FUELS = ['coal', 'gas', 'other', 'hydro', 'nuclear', 'wind', 'solar']
 
 type FuelRow = { period: string } & { [fuel: string]: number | string }
 
-interface Props { data: GenHistoryPoint[] }
+interface Props { data: GenHistoryPoint[]; tz: string }
 
-export function FuelMixArea({ data }: Props) {
+export function FuelMixArea({ data, tz }: Props) {
   const svgRef  = useRef<SVGSVGElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const tipRef  = useRef<HTMLDivElement>(null)
@@ -39,8 +39,8 @@ export function FuelMixArea({ data }: Props) {
     })
 
     const periods = rows.map(r => r.period as string)
-    const x   = makeTimeScale(periods, iw)
-    const cfg = axisConfig(periods)
+    const x   = makeTimeScale(periods, iw, tz)
+    const cfg = axisConfig(periods, tz)
 
     const stack  = d3.stack<FuelRow>().keys(FUELS)
     const series = stack(rows)
@@ -62,7 +62,7 @@ export function FuelMixArea({ data }: Props) {
       .text('gigawatts (GW)')
 
     const area = d3.area<d3.SeriesPoint<FuelRow>>()
-      .x(d => x(parseEiaPeriod((d.data as FuelRow).period as string)))
+      .x(d => x(parseEiaPeriod((d.data as FuelRow).period as string, tz)))
       .y0(d => y(d[0])).y1(d => y(d[1]))
       .curve(d3.curveMonotoneX)
 
@@ -78,7 +78,7 @@ export function FuelMixArea({ data }: Props) {
       .attr('stroke', 'rgba(0,0,0,0.18)').attr('stroke-width', 1)
       .style('opacity', 0).attr('pointer-events', 'none')
 
-    const bisect = d3.bisector<FuelRow, Date>(d => parseEiaPeriod(d.period as string)).left
+    const bisect = d3.bisector<FuelRow, Date>(d => parseEiaPeriod(d.period as string, tz)).left
 
     g.append('rect').attr('width', iw).attr('height', ih)
       .attr('fill', 'none').attr('pointer-events', 'all')
@@ -88,12 +88,12 @@ export function FuelMixArea({ data }: Props) {
         let i = bisect(rows, date, 1)
         if (i >= rows.length) i = rows.length - 1
         if (i > 0) {
-          const d0 = parseEiaPeriod(rows[i - 1].period as string)
-          const d1 = parseEiaPeriod(rows[i].period as string)
+          const d0 = parseEiaPeriod(rows[i - 1].period as string, tz)
+          const d1 = parseEiaPeriod(rows[i].period as string, tz)
           if (date.getTime() - d0.getTime() < d1.getTime() - date.getTime()) i -= 1
         }
         const row = rows[i]
-        const px  = x(parseEiaPeriod(row.period as string))
+        const px  = x(parseEiaPeriod(row.period as string, tz))
 
         crosshair.attr('x1', px).attr('x2', px).style('opacity', 1)
 
@@ -107,7 +107,7 @@ export function FuelMixArea({ data }: Props) {
         const tip = tipRef.current!
         tip.innerHTML = `
           <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">
-            ${fmtTooltipTime(parseEiaPeriod(row.period as string))}
+            ${fmtTooltipTime(parseEiaPeriod(row.period as string, tz))}
           </div>
           ${fuelsWithMw.map(({ fuel, mw }) => `
             <div style="display:flex;justify-content:space-between;gap:20px;margin-bottom:4px">
@@ -126,7 +126,7 @@ export function FuelMixArea({ data }: Props) {
         crosshair.style('opacity', 0)
         if (tipRef.current) tipRef.current.style.opacity = '0'
       })
-  }, [data])
+  }, [data, tz])
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>

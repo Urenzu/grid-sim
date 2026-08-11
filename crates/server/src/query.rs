@@ -1,10 +1,11 @@
 use anyhow::Result;
-use chrono::{Datelike, NaiveDate};
+use chrono::{Datelike, NaiveDate, Timelike};
 use duckdb::Connection;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::domain::carbon_intensity;
+use crate::domain::{carbon_intensity, AGGREGATE_RESPONDENTS};
+use crate::labels::ba_timezone;
 use crate::types::{DuckPoint, FuelEntry, GenHistoryPoint, GridTrendPoint, HeatmapCell};
 
 fn conn() -> Result<Connection> {
@@ -28,7 +29,19 @@ fn fetch_rows(
     let glob = gen_glob(data_dir);
 
     let mut clauses: Vec<String> = Vec::new();
-    if ba.is_some()           { clauses.push("ba = ?".into()); }
+    if ba.is_some() {
+        // An explicit request is honoured as-is: a rollup queried on its own
+        // double-counts nothing.
+        clauses.push("ba = ?".into());
+    } else {
+        // Grid-wide: the historical Parquet still holds the rollup rows EIA
+        // reported, so they must be excluded before summing across BAs.
+        let list = AGGREGATE_RESPONDENTS.iter()
+            .map(|c| format!("'{c}'"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        clauses.push(format!("ba NOT IN ({list})"));
+    }
     if period_start.is_some() { clauses.push("period >= ?".into()); }
     if period_end.is_some()   { clauses.push("period <= ?".into()); }
 
@@ -134,6 +147,7 @@ pub(crate) fn query_heatmap(data_dir: &Path, ba: &str, days: u32) -> Result<Vec<
     if rows.is_empty() { return Ok(vec![]); }
 
     let map = into_period_map(rows);
+    let tz  = ba_timezone(ba);
     let mut sums:   HashMap<(u8, u8), f64> = HashMap::new();
     let mut counts: HashMap<(u8, u8), u32> = HashMap::new();
 
@@ -143,13 +157,9 @@ pub(crate) fn query_heatmap(data_dir: &Path, ba: &str, days: u32) -> Result<Vec<
             .collect();
         let intensity = carbon_intensity(&fuels);
 
-        let hour = period.get(11..13)
-            .and_then(|s| s.parse::<u8>().ok())
-            .unwrap_or(0);
-        let dow = period.get(..10)
-            .and_then(|s| NaiveDate::parse_from_str(s, "%Y-%m-%d").ok())
-            .map(|d| d.weekday().num_days_from_monday() as u8)
-            .unwrap_or(0);
+        // "Carbon intensity at 6pm" only means anything on the BA's own clock,
+        // so shift the UTC period into local time before bucketing.
+        let Some((hour, dow)) = local_hour_dow(period, tz) else { continue };
 
         let key = (hour, dow);
         *sums.entry(key).or_insert(0.0)   += intensity;
@@ -202,6 +212,25 @@ pub(crate) fn query_trends(
     Ok(points)
 }
 
+// ── Local-time bucketing ───────────────────────────────────────────────────
+
+/// Convert an EIA UTC period (`"YYYY-MM-DDTHH"`) into `(hour, weekday)` on the
+/// given timezone's clock, where weekday is 0 = Monday. Returns `None` if the
+/// period is malformed.
+fn local_hour_dow(period: &str, tz: chrono_tz::Tz) -> Option<(u8, u8)> {
+    use chrono::TimeZone;
+
+    let naive = chrono::NaiveDateTime::parse_from_str(
+        &format!("{period}:00:00"), "%Y-%m-%dT%H:%M:%S",
+    ).ok()?;
+    let local = chrono::Utc.from_utc_datetime(&naive).with_timezone(&tz);
+
+    Some((
+        local.hour() as u8,
+        local.weekday().num_days_from_monday() as u8,
+    ))
+}
+
 // ── Period truncation ──────────────────────────────────────────────────────
 
 fn truncate_period(period: &str, granularity: &str) -> String {
@@ -215,5 +244,72 @@ fn truncate_period(period: &str, granularity: &str) -> String {
             })
             .unwrap_or_else(|_| date_str.to_string()),
         _ => period.get(..7).unwrap_or(date_str).to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::labels::ba_timezone;
+
+    // ── Local-hour bucketing ──────────────────────────────────────────────
+
+    #[test]
+    fn utc_period_shifts_into_ba_local_time() {
+        // 2026-03-01T00 UTC is 4pm on Feb 28 in California — the regression
+        // that put CISO solar generation at "midnight".
+        let (hour, dow) = local_hour_dow("2026-03-01T00", ba_timezone("CISO")).unwrap();
+        assert_eq!(hour, 16);
+        assert_eq!(dow, 5, "Feb 28 2026 is a Saturday");
+    }
+
+    #[test]
+    fn ciso_solar_peak_lands_in_the_afternoon() {
+        // CISO solar peaks around 20:00 UTC; that must read as ~1pm local,
+        // not 8pm.
+        let (hour, _) = local_hour_dow("2026-07-15T20", ba_timezone("CISO")).unwrap();
+        assert_eq!(hour, 13);
+    }
+
+    #[test]
+    fn bucketing_follows_dst() {
+        // Same UTC hour, six months apart: Pacific shifts, Arizona does not.
+        let (winter, _) = local_hour_dow("2026-01-15T20", ba_timezone("CISO")).unwrap();
+        let (summer, _) = local_hour_dow("2026-07-15T20", ba_timezone("CISO")).unwrap();
+        assert_eq!((winter, summer), (12, 13));
+
+        let (az_w, _) = local_hour_dow("2026-01-15T20", ba_timezone("AZPS")).unwrap();
+        let (az_s, _) = local_hour_dow("2026-07-15T20", ba_timezone("AZPS")).unwrap();
+        assert_eq!((az_w, az_s), (13, 13));
+    }
+
+    #[test]
+    fn eastern_ba_crosses_the_date_boundary_backwards() {
+        // 04:00 UTC Monday is 11pm Sunday in New York.
+        let (hour, dow) = local_hour_dow("2026-03-02T04", ba_timezone("NYIS")).unwrap();
+        assert_eq!(hour, 23);
+        assert_eq!(dow, 6, "Sunday");
+    }
+
+    #[test]
+    fn unmapped_ba_stays_on_utc() {
+        let (hour, _) = local_hour_dow("2026-07-15T20", ba_timezone("NOPE")).unwrap();
+        assert_eq!(hour, 20);
+    }
+
+    #[test]
+    fn malformed_period_is_skipped_not_bucketed_as_midnight() {
+        assert!(local_hour_dow("garbage", ba_timezone("CISO")).is_none());
+        assert!(local_hour_dow("2026-13-45T99", ba_timezone("CISO")).is_none());
+    }
+
+    // ── Period truncation ─────────────────────────────────────────────────
+
+    #[test]
+    fn truncation_buckets_by_granularity() {
+        assert_eq!(truncate_period("2026-04-07T14", "day"),   "2026-04-07");
+        assert_eq!(truncate_period("2026-04-07T14", "month"), "2026-04");
+        // 2026-04-07 is a Tuesday → week starts Monday the 6th.
+        assert_eq!(truncate_period("2026-04-07T14", "week"),  "2026-04-06");
     }
 }

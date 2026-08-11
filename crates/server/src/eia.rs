@@ -3,7 +3,7 @@ use chrono::NaiveDate;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use crate::domain::normalize_fuel;
+use crate::domain::{is_aggregate, normalize_fuel};
 use crate::labels::BA_LABELS;
 use crate::types::{
     AppState, BaGenData, CachedDemand, CachedGen, CachedInterchange, DemandEntry, EiaFuelResponse,
@@ -35,7 +35,10 @@ pub(crate) async fn fetch_generation(state: &AppState) -> Result<Vec<BaGenData>>
     );
 
     let resp: EiaFuelResponse = state.http.get(&url).send().await?.json().await?;
-    let records = resp.response.data;
+    // Drop US48/region rollups before aggregating — see AGGREGATE_RESPONDENTS.
+    let records: Vec<FuelTypeRecord> = resp.response.data.into_iter()
+        .filter(|r| !is_aggregate(&r.respondent))
+        .collect();
 
     // Each BA reports on its own schedule — find each BA's latest period.
     let mut ba_latest: HashMap<String, String> = HashMap::new();
@@ -107,6 +110,9 @@ pub(crate) async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
     let mut pair_latest: HashMap<(String, String), (String, f64)> = HashMap::new();
     for r in &records {
         let value = match r.value { Some(v) if v != 0.0 => v, _ => continue };
+        // A rollup on either end would draw a phantom arc duplicating the
+        // member BAs' real flows.
+        if is_aggregate(&r.from_ba) || is_aggregate(&r.to_ba) { continue; }
         let key = (r.from_ba.clone(), r.to_ba.clone());
         let is_newer = pair_latest.get(&key).map_or(true, |(p, _)| r.period > *p);
         if is_newer { pair_latest.insert(key, (r.period.clone(), value)); }
@@ -189,7 +195,9 @@ pub(crate) async fn fetch_demand(state: &AppState) -> Result<Vec<DemandEntry>> {
     );
 
     let resp: EiaRegionResponse = state.http.get(&url).send().await?.json().await?;
-    let records = resp.response.data;
+    let records: Vec<RegionRecord> = resp.response.data.into_iter()
+        .filter(|r| !is_aggregate(&r.respondent))
+        .collect();
 
     let mut ba_latest: HashMap<String, String> = HashMap::new();
     for r in &records {

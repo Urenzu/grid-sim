@@ -9,9 +9,9 @@ import {
 const W = 560, H = 280, M = { top: 16, right: 20, bottom: 40, left: 64 }
 const colorScale = d3.scaleSequential(d3.interpolateRdYlGn).domain([800, 0])
 
-interface Props { data: DuckPoint[] }
+interface Props { data: DuckPoint[]; tz: string }
 
-export function CarbonLine({ data }: Props) {
+export function CarbonLine({ data, tz }: Props) {
   const svgRef  = useRef<SVGSVGElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
   const tipRef  = useRef<HTMLDivElement>(null)
@@ -24,8 +24,8 @@ export function CarbonLine({ data }: Props) {
     const iw = W - M.left - M.right
     const ih = H - M.top  - M.bottom
     const periods = data.map(d => d.period)
-    const x    = makeTimeScale(periods, iw)
-    const cfg  = axisConfig(periods)
+    const x    = makeTimeScale(periods, iw, tz)
+    const cfg  = axisConfig(periods, tz)
     const yMax = Math.max(d3.max(data, d => d.intensity) ?? 0, 150)
     const y    = d3.scaleLinear().domain([0, yMax * 1.1]).range([ih, 0])
 
@@ -59,15 +59,15 @@ export function CarbonLine({ data }: Props) {
     // Soft area fill
     g.append('path').datum(data).attr('fill', 'rgba(0,0,0,0.04)')
       .attr('d', d3.area<DuckPoint>()
-        .x(d => x(parseEiaPeriod(d.period))).y0(ih).y1(d => y(d.intensity))
+        .x(d => x(parseEiaPeriod(d.period, tz))).y0(ih).y1(d => y(d.intensity))
         .curve(d3.curveMonotoneX))
 
     // Colored line segments (green=clean, red=dirty)
     for (let i = 1; i < data.length; i++) {
       const a = data[i - 1], b = data[i]
       g.append('line')
-        .attr('x1', x(parseEiaPeriod(a.period))).attr('y1', y(a.intensity))
-        .attr('x2', x(parseEiaPeriod(b.period))).attr('y2', y(b.intensity))
+        .attr('x1', x(parseEiaPeriod(a.period, tz))).attr('y1', y(a.intensity))
+        .attr('x2', x(parseEiaPeriod(b.period, tz))).attr('y2', y(b.intensity))
         .attr('stroke', colorScale((a.intensity + b.intensity) / 2))
         .attr('stroke-width', 3).attr('stroke-linecap', 'round')
     }
@@ -82,7 +82,7 @@ export function CarbonLine({ data }: Props) {
       .attr('stroke', '#fff').attr('stroke-width', 2)
       .style('opacity', 0).attr('pointer-events', 'none')
 
-    const bisect = d3.bisector<DuckPoint, Date>(d => parseEiaPeriod(d.period)).left
+    const bisect = d3.bisector<DuckPoint, Date>(d => parseEiaPeriod(d.period, tz)).left
 
     g.append('rect').attr('width', iw).attr('height', ih)
       .attr('fill', 'none').attr('pointer-events', 'all')
@@ -92,12 +92,12 @@ export function CarbonLine({ data }: Props) {
         let i = bisect(data, date, 1)
         if (i >= data.length) i = data.length - 1
         if (i > 0) {
-          const d0 = parseEiaPeriod(data[i - 1].period)
-          const d1 = parseEiaPeriod(data[i].period)
+          const d0 = parseEiaPeriod(data[i - 1].period, tz)
+          const d1 = parseEiaPeriod(data[i].period, tz)
           if (date.getTime() - d0.getTime() < d1.getTime() - date.getTime()) i -= 1
         }
         const pt = data[i]
-        const px = x(parseEiaPeriod(pt.period))
+        const px = x(parseEiaPeriod(pt.period, tz))
         const py = y(pt.intensity)
         const c  = colorScale(pt.intensity)
 
@@ -112,7 +112,7 @@ export function CarbonLine({ data }: Props) {
         const tip = tipRef.current!
         tip.innerHTML = `
           <div style="font-size:11px;color:rgba(0,0,0,0.5);margin-bottom:8px">
-            ${fmtTooltipTime(parseEiaPeriod(pt.period))}
+            ${fmtTooltipTime(parseEiaPeriod(pt.period, tz))}
           </div>
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
             <div style="width:12px;height:12px;border-radius:50%;background:${c};flex-shrink:0"></div>
@@ -128,7 +128,7 @@ export function CarbonLine({ data }: Props) {
         dot.style('opacity', 0)
         if (tipRef.current) tipRef.current.style.opacity = '0'
       })
-  }, [data])
+  }, [data, tz])
 
   return (
     <div ref={wrapRef} style={{ position: 'relative' }}>

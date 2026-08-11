@@ -3,7 +3,7 @@ import { useState } from 'react'
 import type { BaGenData, GenHistoryPoint, DuckPoint } from '../types'
 import { useHistoryData } from '../hooks/useHistoryData'
 import { useRangeData }   from '../hooks/useRangeData'
-import { BA_DEFS, BA_COLORS } from '../data/ba'
+import { BA_DEFS, BA_COLORS, baTimezone, tzAbbreviation } from '../data/ba'
 import { DuckCurve }            from './charts/DuckCurve'
 import { FuelMixArea }          from './charts/FuelMixArea'
 import { CarbonLine }           from './charts/CarbonLine'
@@ -43,21 +43,22 @@ interface Props {
 // Inner component so hooks are always called unconditionally
 function LiveCharts({ ba, hours }: { ba: string; hours: number }) {
   const { history, duck, loading, fetching } = useHistoryData(ba, hours)
-  return <ChartGrid history={history} duck={duck} loading={loading} fetching={fetching} />
+  return <ChartGrid history={history} duck={duck} loading={loading} fetching={fetching} tz={baTimezone(ba)} />
 }
 
 function RangeCharts({ ba, days }: { ba: string; days: number }) {
   const { history, duck, loading, fetching } = useRangeData(ba, days)
-  return <ChartGrid history={history} duck={duck} loading={loading} fetching={fetching} />
+  return <ChartGrid history={history} duck={duck} loading={loading} fetching={fetching} tz={baTimezone(ba)} />
 }
 
 function ChartGrid({
-  history, duck, loading, fetching,
+  history, duck, loading, fetching, tz,
 }: {
   history:  GenHistoryPoint[] | null
   duck:     DuckPoint[]       | null
   loading:  boolean
   fetching: boolean
+  tz:       string
 }) {
   return (
     <div style={{
@@ -71,28 +72,28 @@ function ChartGrid({
         title="Duck Curve"
         explanation="Net load after subtracting solar and wind. The midday dip is solar doing work; the sharp evening rise is when solar drops and demand peaks."
       >
-        {duck ? <DuckCurve data={duck} /> : <ChartBlank />}
+        {duck ? <DuckCurve data={duck} tz={tz} /> : <ChartBlank />}
       </ChartCard>
 
       <ChartCard
         title="Fuel Mix"
         explanation="Generation by source over time, stacked. Shows how fuels compete and hand off across the day."
       >
-        {history ? <FuelMixArea data={history} /> : <ChartBlank />}
+        {history ? <FuelMixArea data={history} tz={tz} /> : <ChartBlank />}
       </ChartCard>
 
       <ChartCard
         title="Carbon Intensity"
         explanation="Grams of CO₂ per kWh generated. Dips when renewables are high, spikes when fossil fuels carry more load. Dashed line is the US average (~386 g/kWh)."
       >
-        {duck ? <CarbonLine data={duck} /> : <ChartBlank />}
+        {duck ? <CarbonLine data={duck} tz={tz} /> : <ChartBlank />}
       </ChartCard>
 
       <ChartCard
         title="Clean Energy Share"
         explanation="Fraction of generation from zero-carbon sources: nuclear + hydro + wind + solar. Above 50% means most power on the grid is emissions-free."
       >
-        {duck ? <RenewablePenetration data={duck} /> : <ChartBlank />}
+        {duck ? <RenewablePenetration data={duck} tz={tz} /> : <ChartBlank />}
       </ChartCard>
     </div>
   )
@@ -153,6 +154,14 @@ export function Dispatch({ genData: _genData, carbonData: _carbonData, ba, onBaC
           letterSpacing: '0.18em', color: 'rgba(0,0,0,0.25)',
         }}>
           {ba}
+        </span>
+        {/* Charts are plotted on the BA's clock, not the viewer's — say so. */}
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10,
+          letterSpacing: '0.12em', color: 'rgba(0,0,0,0.25)',
+          marginLeft: 'auto',
+        }}>
+          times in {tzAbbreviation(ba)}
         </span>
       </div>
 

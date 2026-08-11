@@ -71,6 +71,71 @@ export const BA_DEFS: [string, string, [number, number]][] = [
   ['ISNE', 'ISO New England',                 [ -71.8,  42.4]],
 ]
 
+// BA → IANA timezone of its load centre. EIA reports Form 930 periods in UTC,
+// but a duck curve only reads correctly against local clock time — plotting
+// UTC hours puts CISO's solar peak in the middle of the night.
+//
+// IANA names rather than fixed offsets so DST is handled; Arizona sits on
+// America/Phoenix, which never shifts. Mirrors BA_TIMEZONES in
+// crates/server/src/labels.rs — update both together.
+export const BA_TIMEZONES: Record<string, string> = {
+  // Pacific
+  CISO: 'America/Los_Angeles', BPAT: 'America/Los_Angeles',
+  PACW: 'America/Los_Angeles', PGE:  'America/Los_Angeles',
+  SCL:  'America/Los_Angeles', TPWR: 'America/Los_Angeles',
+  PSEI: 'America/Los_Angeles', DOPD: 'America/Los_Angeles',
+  GCPD: 'America/Los_Angeles', CHPD: 'America/Los_Angeles',
+  LDWP: 'America/Los_Angeles', BANC: 'America/Los_Angeles',
+  TIDC: 'America/Los_Angeles', IID:  'America/Los_Angeles',
+  NEVP: 'America/Los_Angeles', AVA:  'America/Los_Angeles',
+  AVRN: 'America/Los_Angeles',
+  // Arizona (no DST)
+  AZPS: 'America/Phoenix', SRP:  'America/Phoenix',
+  TEPC: 'America/Phoenix', DEAA: 'America/Phoenix',
+  HGMA: 'America/Phoenix', WALC: 'America/Phoenix',
+  GRID: 'America/Phoenix',
+  // Mountain
+  PACE: 'America/Denver', IPCO: 'America/Boise',
+  PNM:  'America/Denver', EPE:  'America/Denver',
+  WACM: 'America/Denver', PSCO: 'America/Denver',
+  NWMT: 'America/Denver', GWA:  'America/Denver',
+  WWA:  'America/Denver', BHBA: 'America/Denver',
+  SWPW: 'America/Denver',
+  // Central
+  ERCO: 'America/Chicago', MISO: 'America/Chicago',
+  SWPP: 'America/Chicago', AECI: 'America/Chicago',
+  EDE:  'America/Chicago', SPA:  'America/Chicago',
+  TVA:  'America/Chicago', WAUW: 'America/Chicago',
+  SIKE: 'America/Chicago',
+  // Eastern
+  PJM:  'America/New_York', SOCO: 'America/New_York',
+  DUK:  'America/New_York', CPLE: 'America/New_York',
+  CPLW: 'America/New_York', SC:   'America/New_York',
+  SCEG: 'America/New_York', FPL:  'America/New_York',
+  FPC:  'America/New_York', TEC:  'America/New_York',
+  FMPP: 'America/New_York', GVL:  'America/New_York',
+  HST:  'America/New_York', JEA:  'America/New_York',
+  TAL:  'America/New_York', SEC:  'America/New_York',
+  SEPA: 'America/New_York', LGEE: 'America/New_York',
+  OVEC: 'America/New_York', NYIS: 'America/New_York',
+  ISNE: 'America/New_York', YAD:  'America/New_York',
+}
+
+/** Timezone for a BA, falling back to UTC so an unmapped id still renders. */
+export function baTimezone(ba: string): string {
+  return BA_TIMEZONES[ba] ?? 'UTC'
+}
+
+/** Short zone label for axis captions, e.g. "PDT". */
+export function tzAbbreviation(ba: string, at: Date = new Date()): string {
+  const part = new Intl.DateTimeFormat('en-US', {
+    timeZone: baTimezone(ba), timeZoneName: 'short',
+  })
+    .formatToParts(at)
+    .find(p => p.type === 'timeZoneName')
+  return part?.value ?? 'UTC'
+}
+
 export const BA_COLORS: Record<string, string> = {
   // Western
   BPAT: '#2563eb', PACW: '#0891b2', PGE:  '#10b981',

@@ -1,13 +1,52 @@
 import type React from 'react'
 import * as d3 from 'd3'
 
-// EIA periods arrive as "2026-04-07T14" — parse as local time
-export function parseEiaPeriod(p: string): Date {
-  return new Date(p + ':00')
+// EIA periods arrive as "2026-04-07T14" and are always UTC.
+//
+// Charts need them on the *balancing authority's* clock: a duck curve plotted
+// against UTC puts CISO's solar peak near midnight, and rendering in the
+// viewer's own zone makes the same chart differ by continent. So each period
+// is re-expressed as a Date whose local getters read the BA's wall clock —
+// d3's time scales, tick intervals and every getHours() below then work
+// unchanged, in the right zone.
+//
+// Caveat: the two hours a year the *viewer's* zone changes offset are not
+// representable this way and shift by an hour.
+
+const zoneFormatters = new Map<string, Intl.DateTimeFormat>()
+
+function zoneFormatter(tz: string): Intl.DateTimeFormat {
+  let f = zoneFormatters.get(tz)
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hourCycle: 'h23',
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit',
+    })
+    zoneFormatters.set(tz, f)
+  }
+  return f
 }
 
-export function makeTimeScale(periods: string[], width: number) {
-  const dates = periods.map(parseEiaPeriod)
+// Parsing is hot — bisectors re-derive dates on every mousemove.
+const periodCache = new Map<string, Date>()
+
+export function parseEiaPeriod(period: string, tz = 'UTC'): Date {
+  const key = tz + period
+  const hit = periodCache.get(key)
+  if (hit) return hit
+
+  const utc   = new Date(period + ':00:00Z')
+  const parts = zoneFormatter(tz).formatToParts(utc)
+  const num   = (type: string) => Number(parts.find(p => p.type === type)?.value)
+  const local = new Date(num('year'), num('month') - 1, num('day'), num('hour'))
+
+  if (periodCache.size > 20_000) periodCache.clear()
+  periodCache.set(key, local)
+  return local
+}
+
+export function makeTimeScale(periods: string[], width: number, tz = 'UTC') {
+  const dates = periods.map(p => parseEiaPeriod(p, tz))
   return d3.scaleTime()
     .domain([dates[0], dates[dates.length - 1]])
     .range([0, width])
@@ -24,12 +63,12 @@ const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-export function axisConfig(periods: string[]): {
+export function axisConfig(periods: string[], tz = 'UTC'): {
   tickInterval: d3.TimeInterval
   format: (d: Date) => string
   dayLines: boolean
 } {
-  const dates = periods.map(parseEiaPeriod)
+  const dates = periods.map(p => parseEiaPeriod(p, tz))
   const spanH = (dates[dates.length - 1].getTime() - dates[0].getTime()) / 3_600_000
 
   if (spanH <= 26) {

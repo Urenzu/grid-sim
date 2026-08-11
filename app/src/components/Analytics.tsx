@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAnalyticsData } from '../hooks/useAnalyticsData'
 import { useHeatmapData }   from '../hooks/useHeatmapData'
 import { useTrendData }     from '../hooks/useTrendData'
-import { FUEL_COLORS, BA_DEFS } from '../data/ba'
+import { FUEL_COLORS, BA_DEFS, tzAbbreviation } from '../data/ba'
 import { BaScatter }     from './charts/BaScatter'
 import { BaHourHeatmap } from './charts/BaHourHeatmap'
 import { GridTrend }     from './charts/GridTrend'
@@ -270,7 +270,7 @@ function ExpandBtn({ onClick }: { onClick: () => void }) {
 // ── heatmap panel ─────────────────────────────────────────────────────────
 
 const HEATMAP_TITLE = "Carbon Intensity by Hour & Day"
-const HEATMAP_EXPL  = "Average carbon intensity (g CO₂/kWh) for each hour and day of week. Green = cleaner electricity, red = more carbon-heavy. Use it to find the best times to shift heavy loads."
+const HEATMAP_EXPL  = "Average carbon intensity (g CO₂/kWh) for each hour and day of week, on the balancing authority's local clock. Green = cleaner electricity, red = more carbon-heavy. Use it to find the best times to shift heavy loads."
 
 function HeatmapPanel() {
   const [ba,       setBa]       = useState('CISO')
@@ -294,6 +294,13 @@ function HeatmapPanel() {
         {fetching && !loading && (
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(0,0,0,0.3)' }}>loading…</span>
         )}
+        {/* Buckets come back on the BA's clock, not the viewer's. */}
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 10,
+          letterSpacing: '0.12em', color: 'rgba(0,0,0,0.25)', marginLeft: 'auto',
+        }}>
+          hours in {tzAbbreviation(ba)}
+        </span>
       </div>
       {loading ? (
         <div style={{ height: 380, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
