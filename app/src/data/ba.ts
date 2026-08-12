@@ -9,8 +9,12 @@ export const FUEL_COLORS: Record<string, string> = {
   other:   '#6b7280',
 }
 
-// All balancing authorities with display label and seed coordinate [lon, lat].
-// Add new BAs here — the server already returns data for all EIA 930 reporters.
+// Load-serving balancing authorities: display label and seed coordinate
+// [lon, lat]. These balance demand across a territory, so they get a Voronoi
+// cell on the map — the land is theirs.
+//
+// Generator-only BAs live in GENERATOR_BAS below and are drawn as points
+// instead; see the note there.
 export const BA_DEFS: [string, string, [number, number]][] = [
   // ── Western Interconnection ──────────────────────────────────────────────
   ['BPAT', 'Bonneville Power Admin',          [-122.5,  46.8]],
@@ -41,12 +45,13 @@ export const BA_DEFS: [string, string, [number, number]][] = [
   ['BANC', 'N. California Balancing Auth',    [-121.5,  40.5]],
   ['TIDC', 'Turlock Irrigation District',     [-120.8,  37.6]],
   ['WALC', 'WAPA Desert Southwest',           [-112.1,  33.8]],
-  ['HGMA', 'Harquahala Generating',           [-113.5,  33.2]],
-  ['DEAA', 'Arlington Valley LLC',            [-112.7,  33.0]],
+  ['SWPW', 'Southwest Power Pool West',       [-106.5,  43.6]],
+  ['BHBA', 'Black Hills Energy',              [-103.2,  44.1]],
   // ── Texas ────────────────────────────────────────────────────────────────
   ['ERCO', 'ERCOT',                           [ -99.3,  31.5]],
   // ── Eastern Interconnection ──────────────────────────────────────────────
   ['WAUW', 'WAPA Upper Great Plains',         [-101.5,  45.5]],
+  ['SPA',  'Southwestern Power Admin',        [ -94.3,  35.6]],
   ['SWPP', 'Southwest Power Pool',            [ -97.5,  38.5]],
   ['MISO', 'Midcontinent ISO',                [ -90.0,  42.5]],
   ['PJM',  'PJM Interconnection',             [ -79.5,  40.5]],
@@ -70,6 +75,34 @@ export const BA_DEFS: [string, string, [number, number]][] = [
   ['NYIS', 'New York ISO',                    [ -75.5,  43.0]],
   ['ISNE', 'ISO New England',                 [ -71.8,  42.4]],
 ]
+
+// Generator-only balancing authorities: they report net generation and
+// interchange but no demand at all, because they serve no load. Each is
+// *embedded* inside a host BA's footprint and injects into it — Avangrid's
+// wind fleet sits inside BPA and PacifiCorp West, for instance.
+//
+// They therefore get a point marker rather than a Voronoi cell: drawing them
+// as territory would claim ground the host BA actually serves. The coordinate
+// is where they inject, not a boundary.
+//
+// Membership is a registry fact, not a data artefact — a BA that happens to
+// report 0 MW this hour is still load-serving. Verified against the series
+// each respondent publishes in EIA-930 (NG + TI, never D).
+export const GENERATOR_BAS: [string, string, [number, number]][] = [
+  ['AVRN', 'Avangrid Renewables',          [-120.2,  45.7]],  // Columbia Gorge wind
+  ['GRID', 'Gridforce Energy Management',  [-110.4,  34.3]],
+  ['DEAA', 'Arlington Valley LLC',         [-112.7,  33.0]],
+  ['HGMA', 'Harquahala Generating',        [-113.5,  33.2]],
+  ['SIKE', 'Sikeston Municipal Utilities', [ -89.6,  36.9]],
+  ['YAD',  'Alcoa Power Gen - Yadkin',     [ -80.1,  35.4]],
+]
+
+const GENERATOR_IDS = new Set(GENERATOR_BAS.map(([id]) => id))
+
+/** True for BAs that serve no load and inject into a host BA. */
+export function isGeneratorOnly(ba: string): boolean {
+  return GENERATOR_IDS.has(ba)
+}
 
 // BA → IANA timezone of its load centre. EIA reports Form 930 periods in UTC,
 // but a duck curve only reads correctly against local clock time — plotting
@@ -159,4 +192,8 @@ export const BA_COLORS: Record<string, string> = {
   TEC:  '#0891b2', FMPP: '#b45309', JEA:  '#92400e',
   GVL:  '#78350f', TAL:  '#6b7280', SEC:  '#0d9488',
   NYIS: '#7c3aed', ISNE: '#8b5cf6',
+  // Load-serving BAs added alongside the type split
+  SWPW: '#5b7c99', BHBA: '#8c6d4f', SPA:  '#4a7c59',
+  // Generator-only BAs
+  AVRN: '#0e7490', GRID: '#a16207', SIKE: '#7c2d12', YAD:  '#1e6091',
 }

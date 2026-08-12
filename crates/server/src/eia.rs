@@ -139,15 +139,9 @@ pub(crate) async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
     }).collect();
     nodes.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let mut net: HashMap<(String, String), f64> = HashMap::new();
-    for ((from, to), (_, value)) in &pair_latest {
-        let (a, b, sign) = if from < to {
-            (from.clone(), to.clone(),  1.0_f64)
-        } else {
-            (to.clone(),  from.clone(), -1.0_f64)
-        };
-        *net.entry((a, b)).or_insert(0.0) += value * sign;
-    }
+    let net = net_flows(
+        pair_latest.iter().map(|((f, t), (_, v))| (f.as_str(), t.as_str(), *v)),
+    );
 
     let period = pair_latest.values()
         .map(|(p, _)| p.as_str())
@@ -170,6 +164,32 @@ pub(crate) async fn fetch_interchange(state: &AppState) -> Result<GraphData> {
     let mut cache = state.interchange_cache.write().await;
     *cache = Some(CachedInterchange { data: result.clone(), raw, fetched_at: Instant::now() });
     Ok(result)
+}
+
+/// Reduce directional interchange reports to one netted flow per BA pair,
+/// keyed by the pair in lexicographic order with a positive value meaning
+/// flow from the first id to the second.
+///
+/// Both BAs on a tie meter it independently, so EIA carries the same physical
+/// flow twice with opposite signs — `GRID->BPAT 799` alongside
+/// `BPAT->GRID -832`, disagreeing slightly because they are two separate
+/// measurements. Those reports are averaged into a single flow; summing them
+/// would report every tie at roughly double its real magnitude.
+fn net_flows<'a>(
+    reports: impl Iterator<Item = (&'a str, &'a str, f64)>,
+) -> HashMap<(String, String), f64> {
+    let mut acc: HashMap<(String, String), (f64, u32)> = HashMap::new();
+    for (from, to, value) in reports {
+        let (a, b, sign) = if from < to {
+            (from.to_string(), to.to_string(),  1.0_f64)
+        } else {
+            (to.to_string(),  from.to_string(), -1.0_f64)
+        };
+        let entry = acc.entry((a, b)).or_insert((0.0, 0));
+        entry.0 += value * sign;
+        entry.1 += 1;
+    }
+    acc.into_iter().map(|(k, (sum, n))| (k, sum / n as f64)).collect()
 }
 
 pub(crate) async fn fetch_demand(state: &AppState) -> Result<Vec<DemandEntry>> {
@@ -314,4 +334,60 @@ pub(crate) async fn fetch_demand_range(state: &AppState, date: NaiveDate) -> Res
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Ok(all)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn flow(m: &HashMap<(String, String), f64>, a: &str, b: &str) -> f64 {
+        *m.get(&(a.to_string(), b.to_string())).expect("pair missing")
+    }
+
+    #[test]
+    fn reciprocal_reports_are_averaged_not_summed() {
+        // The real GRID/BPAT tie: both BAs meter it, EIA carries both views.
+        let m = net_flows([
+            ("GRID", "BPAT",  799.0),
+            ("BPAT", "GRID", -832.0),
+        ].into_iter());
+
+        assert_eq!(m.len(), 1, "one physical tie, one entry");
+        // Averaged to -815.5 (BPAT->GRID negative == GRID exporting to BPAT),
+        // not the -1631 that summing produced.
+        assert!((flow(&m, "BPAT", "GRID") + 815.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_single_sided_report_is_left_alone() {
+        // Not every tie is reported from both ends; those must not be halved.
+        let m = net_flows([("AVRN", "BPAT", 1200.0)].into_iter());
+        assert!((flow(&m, "AVRN", "BPAT") - 1200.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn exports_stay_within_generation_for_a_generator_only_ba() {
+        // GRID generates ~2.1 GW; summing its four ties claimed 4.8 GW of
+        // exports, which is physically impossible.
+        let m = net_flows([
+            ("GRID", "BPAT",  799.0), ("BPAT", "GRID", -832.0),
+            ("GRID", "SRP",   527.0), ("SRP",  "GRID", -527.0),
+            ("GRID", "WALC",  560.0), ("WALC", "GRID", -560.0),
+            ("GRID", "PNM",   495.0), ("PNM",  "GRID", -495.0),
+        ].into_iter());
+
+        let total: f64 = m.iter()
+            .map(|((a, _), v)| if a == "GRID" { *v } else { -*v })
+            .sum();
+        assert!((total - 2397.5).abs() < 1e-9, "got {total}");
+        assert!(total < 2600.0, "exports must not exceed generation");
+    }
+
+    #[test]
+    fn direction_is_independent_of_which_side_reported() {
+        // Same physical flow, opposite reporting order — same result.
+        let a = net_flows([("SRP", "GRID", -527.0)].into_iter());
+        let b = net_flows([("GRID", "SRP",  527.0)].into_iter());
+        assert!((flow(&a, "GRID", "SRP") - flow(&b, "GRID", "SRP")).abs() < 1e-9);
+    }
 }

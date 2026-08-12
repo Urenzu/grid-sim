@@ -42,6 +42,16 @@ pub(crate) async fn carbon_handler(
     Ok(Json(result))
 }
 
+/// Latest demand per BA. Generator-only balancing authorities report no
+/// demand at all, so absence from this list is itself meaningful — it is what
+/// distinguishes them from load-serving BAs in the UI.
+pub(crate) async fn demand_handler(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<crate::types::DemandEntry>>, StatusCode> {
+    fetch_demand(&state).await.map(Json)
+        .map_err(|e| { tracing::error!("demand: {e:#}"); StatusCode::BAD_GATEWAY })
+}
+
 pub(crate) async fn history_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<HistoryParams>,

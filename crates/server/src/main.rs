@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
         .route("/health",                get(handlers::health_handler))
         .route("/api/interchange",       get(handlers::interchange_handler))
         .route("/api/generation",        get(handlers::generation_handler))
+        .route("/api/demand",            get(handlers::demand_handler))
         .route("/api/carbon",            get(handlers::carbon_handler))
         .route("/api/history",           get(handlers::history_handler))
         .route("/api/duck-curve",        get(handlers::duck_curve_handler))

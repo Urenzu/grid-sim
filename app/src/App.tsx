@@ -10,6 +10,7 @@ import { Analytics }         from './components/Analytics'
 import { useGridData }       from './hooks/useGridData'
 import { useGenerationData } from './hooks/useGenerationData'
 import { useCarbonData }     from './hooks/useCarbonData'
+import { useDemandData }     from './hooks/useDemandData'
 import type { Mode, LayerKey } from './types'
 
 type View = 'grid' | 'dispatch' | 'analytics'
@@ -30,6 +31,7 @@ export default function App() {
 
   const { genData }    = useGenerationData()
   const { carbonData } = useCarbonData()
+  const { demandData } = useDemandData()
   const queryClient    = useQueryClient()
 
   const displayedBA = hoveredBA ?? selectedBA
@@ -119,9 +121,10 @@ export default function App() {
               selectedBA={selectedBA} onBASelect={handleBASelect}
               mode={mode} layers={layers} genData={genData} carbonData={carbonData}
             />
-            <HUD data={data} error={error} loading={loading} />
+            <HUD data={data} genData={genData} error={error} loading={loading} />
             <BAInfoPanel
               baId={displayedBA} selectedBA={selectedBA} data={data} genData={genData}
+              demandData={demandData}
               onViewAnalytics={navigateToDispatch}
             />
             <ModeBar mode={mode} layers={layers} onMode={setMode} onLayerToggle={toggleLayer} />

@@ -17,6 +17,7 @@ export interface GridData {
 
 export interface BaGenData {
   ba:           string
+  period:       string
   totalMw:      number
   dominantFuel: string
   fuels:        Array<{ fuel: string; mw: number }>
@@ -90,4 +91,10 @@ export interface RangeResponse {
 }
 
 export type Mode     = 'flow' | 'generation' | 'carbon'
-export type LayerKey = 'arcs' | 'particles' | 'nuclear' | 'hydro' | 'wind' | 'solar' | 'gas' | 'coal'
+export type LayerKey = 'arcs' | 'particles' | 'generators' | 'nuclear' | 'hydro' | 'wind' | 'solar' | 'gas' | 'coal'
+
+export interface BaDemandData {
+  period:    string
+  ba:        string
+  demandMw:  number
+}

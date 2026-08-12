@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import * as d3 from 'd3'
 import * as topojson from 'topojson-client'
 import type { GridData, BaGenData, BaCarbonData, Mode, LayerKey } from '../types'
-import { FUEL_COLORS, BA_COLORS, BA_DEFS } from '../data/ba'
+import { FUEL_COLORS, BA_COLORS, BA_DEFS, GENERATOR_BAS } from '../data/ba'
 import { NUCLEAR_PLANTS, HYDRO_PLANTS, WIND_FARMS, SOLAR_FARMS, GAS_PLANTS, COAL_PLANTS, EXTRA_SEEDS } from '../data/plants'
 
 function hexToRgb(hex: string) {
@@ -68,6 +68,8 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
     stateMeshP2d:   null as Path2D | null,
     voronoiCells:   [] as { id: string; path2d: Path2D }[],
     baList:         [] as { id: string; name: string; pt: [number, number] }[],
+    // Generator-only BAs — points, never cells (see GENERATOR_BAS in data/ba)
+    genList:        [] as { id: string; name: string; pt: [number, number] }[],
     pos:            new Map<string, [number, number]>(),
     plantPts: {
       nuclear: [] as [number, number, number][],
@@ -86,6 +88,7 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
     selectedBA: null as string | null,
     mode:           'flow' as Mode,
     layerArcs:      true,
+    layerGenerators: true,
     layerParticles: true,
     layerNuclear:   true,
     layerHydro:     true,
@@ -133,8 +136,9 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
       const meshStr = pathStr(stateMesh)
       S.current.stateMeshP2d = meshStr ? new Path2D(meshStr) : null
 
+      // Both kinds go into `pos` so hit-testing picks up generators too.
       const pos = new Map<string, [number, number]>()
-      for (const [id, , lonlat] of BA_DEFS) {
+      for (const [id, , lonlat] of [...BA_DEFS, ...GENERATOR_BAS]) {
         const p = proj(lonlat as [number, number])
         if (p) pos.set(id, p as [number, number])
       }
@@ -143,7 +147,12 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
       S.current.baList = BA_DEFS.flatMap(([id, name]) => {
         const pt = pos.get(id); return pt ? [{ id, name, pt }] : []
       })
+      S.current.genList = GENERATOR_BAS.flatMap(([id, name]) => {
+        const pt = pos.get(id); return pt ? [{ id, name, pt }] : []
+      })
 
+      // Only load-serving BAs seed the Voronoi — a generator-only BA has no
+      // territory to claim, it injects into whichever cell it sits in.
       const seeds: { id: string; pt: [number, number] }[] = [
         ...S.current.baList.map(b => ({ id: b.id, pt: b.pt })),
       ]
@@ -255,13 +264,13 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
     function frame() {
       const ss = S.current
       const { transform: T, hoveredBA, selectedBA: selBA, mode: m,
-              layerArcs, layerParticles, layerNuclear, layerHydro,
+              layerArcs, layerParticles, layerGenerators, layerNuclear, layerHydro,
               layerWind, layerSolar, layerGas, layerCoal,
               genMap, carbonMap, arcData, particles, plantPts } = ss
       void (hoveredBA ?? selBA) // activeBA — reserved for future use
 
       // Advance per-BA hover lerp (smooth 6-frame transition)
-      for (const { id } of ss.baList) {
+      for (const { id } of [...ss.baList, ...ss.genList]) {
         const target = id === hoveredBA ? 1 : id === selBA ? 0.55 : 0
         const cur    = ss.hoverT.get(id) ?? 0
         ss.hoverT.set(id, cur + (target - cur) * 0.2)
@@ -544,15 +553,60 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
         ctx.fill(); ctx.stroke()
       }
 
+      // ── Generator-only BA markers ─────────────────────────────────────
+      // Drawn as a ringed point, never a cell: these inject into whichever
+      // host BA's territory they sit in. The ring distinguishes them from the
+      // plain plant dots of the fuel layers. Three states, so "off" never
+      // looks like "unknown":
+      //   producing      → filled, sized by output
+      //   reporting zero → hollow, solid ring (idle — YAD is idle ~47% of hours)
+      //   no data        → dashed ring (we don't know, which is not the same)
+      if (layerGenerators) {
+        for (const { id, pt } of ss.genList) {
+          const t   = ss.hoverT.get(id) ?? 0
+          const rec = genMap.get(id)
+          const mw  = rec?.totalMw
+          const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
+
+          // Sub-linear so a 7 MW station stays visible next to a 2 GW fleet
+          const scale  = mw && mw > 0 ? Math.min(Math.sqrt(mw) / 26, 1) : 0
+          const outerR = (6 + scale * 5 + t * 3) / T.k
+
+          ctx.beginPath()
+          ctx.arc(pt[0], pt[1], outerR, 0, Math.PI * 2)
+          ctx.setLineDash(mw === undefined ? [2 / T.k, 2 / T.k] : [])
+          ctx.strokeStyle = `rgba(${r},${g},${b},${0.55 + t * 0.45})`
+          ctx.lineWidth   = (1.4 + t * 0.6) / T.k
+          ctx.stroke()
+          ctx.setLineDash([])
+
+          if (mw !== undefined && mw > 0) {
+            ctx.beginPath()
+            ctx.arc(pt[0], pt[1], outerR * 0.5, 0, Math.PI * 2)
+            ctx.fillStyle = `rgba(${r},${g},${b},${0.8 + t * 0.2})`
+            ctx.fill()
+          }
+        }
+      }
+
       // ── BA labels — pill chips ────────────────────────────────────────
       const hPad = 4 / T.k
       const vPad = 2.5 / T.k
       const pRad = 3 / T.k
 
-      for (const { id, name, pt } of ss.baList) {
+      // Generator-only chips carry a leading › to mark them as injection
+      // points rather than territories. Only 6 of 60+ BAs get it, so it reads
+      // as "these are the exception" instead of adding noise everywhere.
+      const chips = [
+        ...ss.baList.map(b => ({ ...b, gen: false })),
+        ...(layerGenerators ? ss.genList.map(b => ({ ...b, gen: true })) : []),
+      ]
+
+      for (const { id, name, pt, gen } of chips) {
         const t    = ss.hoverT.get(id) ?? 0
         const { r, g, b } = hexToRgb(BA_COLORS[id] ?? '#333')
         const dotR = (5 + t * 3) / T.k
+        const text = gen ? `› ${id}` : id
 
         // 9px screen-space at rest, grows to 13px on full hover
         const textSize = (9 + t * 4) / T.k
@@ -560,7 +614,7 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
         ctx.textAlign    = 'center'
         ctx.textBaseline = 'alphabetic'
 
-        const tw   = ctx.measureText(id).width
+        const tw   = ctx.measureText(text).width
         const capH = textSize * 0.68   // approx cap height for IBM Plex Mono
         const pillW = tw + hPad * 2
         const pillH = capH + vPad * 2
@@ -574,12 +628,15 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
         // Background
         ctx.beginPath()
         ctx.roundRect(pillLeft, pillTop, pillW, pillH, pRad)
-        ctx.fillStyle = `rgba(255,255,255,${0.78 + t * 0.14})`
+        ctx.fillStyle = gen
+          ? `rgba(252,250,244,${0.82 + t * 0.14})`
+          : `rgba(255,255,255,${0.78 + t * 0.14})`
         ctx.fill()
 
-        // BA-colored border fades in with hover
-        if (t > 0.04) {
-          ctx.strokeStyle = `rgba(${r},${g},${b},${t * 0.65})`
+        // BA-colored border: always on for generators so the chip reads as a
+        // different kind of thing at rest, hover-only for territories.
+        if (gen || t > 0.04) {
+          ctx.strokeStyle = `rgba(${r},${g},${b},${gen ? 0.3 + t * 0.5 : t * 0.65})`
           ctx.lineWidth   = 0.7 / T.k
           ctx.stroke()
         }
@@ -588,7 +645,7 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
         ctx.fillStyle = t > 0.15
           ? `rgba(${r},${g},${b},${0.52 + t * 0.48})`
           : `rgba(20,20,20,${0.52 + t * 0.48})`
-        ctx.fillText(id, pt[0], pillCY + capH * 0.5)
+        ctx.fillText(text, pt[0], pillCY + capH * 0.5)
 
         // Full name fades in above 2× zoom, below the dot
         if (T.k > 2) {
@@ -614,7 +671,7 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
       d3.select(canvas).on('.zoom', null)
       S.current.pos.clear()
       S.current.arcData = []; S.current.particles = []
-      S.current.voronoiCells = []; S.current.baList = []
+      S.current.voronoiCells = []; S.current.baList = []; S.current.genList = []
       S.current.geoReady = false
       S.current.continentalP2d = null; S.current.stateMeshP2d = null
       S.current.plantPts = { nuclear: [], hydro: [], wind: [], solar: [], gas: [], coal: [] }
@@ -626,7 +683,8 @@ export function GridMap({ data, onBAHover, selectedBA, onBASelect, mode, layers,
 
   useEffect(() => {
     S.current.mode           = mode
-    S.current.layerArcs      = layers.has('arcs')
+    S.current.layerArcs       = layers.has('arcs')
+    S.current.layerGenerators = layers.has('generators')
     S.current.layerParticles = layers.has('particles')
     S.current.layerNuclear   = layers.has('nuclear')
     S.current.layerHydro     = layers.has('hydro')

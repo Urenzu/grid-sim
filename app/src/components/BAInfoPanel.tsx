@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import type { GridData, BaGenData } from '../types'
-import { FUEL_COLORS, BA_COLORS, BA_DEFS } from '../data/ba'
+import type { GridData, BaGenData, BaDemandData } from '../types'
+import { FUEL_COLORS, BA_COLORS, BA_DEFS, GENERATOR_BAS, isGeneratorOnly } from '../data/ba'
+import { relativeAge, freshness, absoluteUtc, FRESHNESS_COLOR } from '../utils/time'
 
 const BA_LABEL_MAP: Record<string, string> = Object.fromEntries(
-  BA_DEFS.map(([id, label]) => [id, label])
+  [...BA_DEFS, ...GENERATOR_BAS].map(([id, label]) => [id, label])
 )
 
 function fmtMW(mw: number) {
@@ -16,10 +18,11 @@ interface Props {
   selectedBA:      string | null
   data:            GridData | null
   genData:         BaGenData[] | null
+  demandData:      BaDemandData[] | null
   onViewAnalytics: (id: string) => void
 }
 
-export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }: Props) {
+export function BAInfoPanel({ baId, selectedBA, data, genData, demandData, onViewAnalytics }: Props) {
   const color  = baId ? (BA_COLORS[baId] ?? '#333333') : '#333333'
   const label  = baId ? (BA_LABEL_MAP[baId] ?? baId) : null
   const baGen  = baId ? (genData?.find(d => d.ba === baId) ?? null) : null
@@ -46,6 +49,21 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
 
   const isExport  = net >= 0
   const flowColor = isExport ? '#2563eb' : '#ea580c'
+
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  const generatorOnly = baId ? isGeneratorOnly(baId) : false
+  const demand        = baId ? (demandData?.find(d => d.ba === baId) ?? null) : null
+
+  // A generator-only BA is embedded in whichever BAs it exchanges with — that
+  // relationship is the thing that explains why it has no territory.
+  const hosts = generatorOnly
+    ? partners.map(p => p.id).slice(0, 3)
+    : []
 
   return (
     <div style={{
@@ -99,17 +117,54 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
               </div>
             </div>
 
+            {/* ── What kind of thing this is ── */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              background: generatorOnly ? 'rgba(161,98,7,0.08)' : 'rgba(0,102,204,0.07)',
+              border: `1px solid ${generatorOnly ? 'rgba(161,98,7,0.22)' : 'rgba(0,102,204,0.2)'}`,
+              borderRadius: 999, padding: '4px 10px', marginBottom: 12,
+              fontFamily: 'var(--font-mono)', fontSize: 9.5,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: generatorOnly ? '#a16207' : '#0066cc',
+            }}>
+              {generatorOnly ? '› generator only' : '▣ serves load'}
+            </div>
+
+            {/* The sentence that explains why it has no territory. */}
+            {generatorOnly && hosts.length > 0 && (
+              <div style={{
+                fontFamily: 'var(--font-mono)', fontSize: 10.5,
+                lineHeight: 1.5, color: 'rgba(0,0,0,0.45)', marginBottom: 12,
+              }}>
+                No demand of its own — injects into{' '}
+                <span style={{ color: 'rgba(0,0,0,0.7)' }}>{hosts.join(', ')}</span>.
+              </div>
+            )}
+
             <Divider />
 
             {/* ── Interchange stats ── */}
             <Row label={isExport ? 'net export' : 'net import'} value={fmtMW(net)} valueColor={flowColor} />
             <Row label="active links" value={String(partners.length)} />
 
+            {/* ── Demand ── */}
+            {/* Shown for load-serving BAs, and its absence stated outright for
+                generator-only ones: the structural difference is the point. */}
+            <Divider top={14} bottom={12} />
+            <SectionLabel period={demand?.period ?? null} now={now}>Demand</SectionLabel>
+            {generatorOnly ? (
+              <Row label="metered load" value="none" valueColor="rgba(0,0,0,0.3)" />
+            ) : demand ? (
+              <Row label="metered load" value={fmtMW(demand.demandMw)} />
+            ) : (
+              <Row label="metered load" value="no data" valueColor="rgba(0,0,0,0.3)" />
+            )}
+
             {/* ── Fuel mix ── */}
             {baGen && (
               <>
                 <Divider top={14} bottom={12} />
-                <SectionLabel>Generation</SectionLabel>
+                <SectionLabel period={baGen.period ?? null} now={now}>Generation</SectionLabel>
                 <Row label="total output" value={fmtMW(baGen.totalMw)} />
                 <div style={{ marginTop: 14, marginBottom: 4, display: 'flex', justifyContent: 'center' }}>
                   <FuelDonut fuels={baGen.fuels} total={baGen.totalMw} />
@@ -126,7 +181,7 @@ export function BAInfoPanel({ baId, selectedBA, data, genData, onViewAnalytics }
             {partners.length > 0 && (
               <>
                 <Divider top={14} bottom={12} />
-                <SectionLabel>Exchanges ({partners.length})</SectionLabel>
+                <SectionLabel period={data?.period ?? null} now={now}>Exchanges ({partners.length})</SectionLabel>
                 <div style={{ maxHeight: 200, overflowY: 'auto', overflowX: 'hidden' }}>
                   {partners.map(p => {
                     const partnerColor = BA_COLORS[p.id] ?? '#6b7280'
@@ -226,16 +281,43 @@ function Divider({ top = 12, bottom = 12 }: { top?: number; bottom?: number }) {
   )
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+/**
+ * Section heading with the age of that section's own feed.
+ *
+ * The three EIA series behind this panel are hours to days apart, so a single
+ * panel-level timestamp would be wrong for two of the three sections. Each
+ * one carries its own instead.
+ */
+function SectionLabel({ children, period, now }: {
+  children: React.ReactNode
+  period?:  string | null
+  now?:     Date
+}) {
   return (
     <div style={{
-      fontFamily: 'var(--font-mono)',
-      fontSize: 10, letterSpacing: '0.14em',
-      textTransform: 'uppercase',
-      color: 'rgba(0,0,0,0.38)',
-      marginBottom: 10,
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      gap: 8, marginBottom: 10,
     }}>
-      {children}
+      <span style={{
+        fontFamily: 'var(--font-mono)',
+        fontSize: 10, letterSpacing: '0.14em',
+        textTransform: 'uppercase',
+        color: 'rgba(0,0,0,0.38)',
+      }}>
+        {children}
+      </span>
+      {period !== undefined && (
+        <span
+          title={absoluteUtc(period)}
+          style={{
+            fontFamily: 'var(--font-mono)', fontSize: 9,
+            letterSpacing: '0.06em',
+            color: FRESHNESS_COLOR[freshness(period, now)],
+          }}
+        >
+          {relativeAge(period, now)}
+        </span>
+      )}
     </div>
   )
 }

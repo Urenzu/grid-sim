@@ -125,8 +125,10 @@ pub(crate) struct RegionRecord {
 #[derive(Serialize, Clone)]
 pub struct BaGenData {
     pub ba:            String,
-    /// Snapshot period from EIA — skipped in API JSON, used for Parquet writes.
-    #[serde(skip)]
+    /// Snapshot period from EIA. Served to the client as well as used for
+    /// Parquet writes: EIA's generation, demand and interchange feeds lag by
+    /// very different amounts, so the UI has to timestamp them separately
+    /// rather than imply one "current" moment.
     pub period:        String,
     #[serde(rename = "totalMw")]
     pub total_mw:      f64,
@@ -209,7 +211,8 @@ pub(crate) struct InterchangeRaw {
 }
 
 /// Demand snapshot entry (metered load per BA).
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct DemandEntry {
     pub(crate) period:    String,
     pub(crate) ba:        String,

@@ -12,7 +12,7 @@ const FLOW_LAYERS: { id: LayerKey; label: string }[] = [
   { id: 'particles', label: 'Particles' },
 ]
 
-export const DEFAULT_LAYERS: LayerKey[] = ['arcs', 'particles', 'nuclear', 'hydro', 'wind', 'solar', 'gas', 'coal']
+export const DEFAULT_LAYERS: LayerKey[] = ['arcs', 'particles', 'generators', 'nuclear', 'hydro', 'wind', 'solar', 'gas', 'coal']
 
 const GLOBAL_LAYERS: { id: LayerKey; label: string; on: string; border: string; text: string }[] = [
   { id: 'nuclear', label: 'Nuclear', on: 'rgba(139,92,246,0.1)',  border: 'rgba(139,92,246,0.3)',  text: '#7c3aed' },
@@ -44,6 +44,50 @@ export function ModeBar({ mode, layers, onMode, onLayerToggle }: Props) {
       gap: 9,
       pointerEvents: 'none',
     }}>
+
+      {/* BA type key — the two kinds of thing on the map. Doubles as the
+          generator-only filter, so isolating them is one click. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        background: 'rgba(255,255,255,0.82)',
+        backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+        border: '1px solid rgba(0,0,0,0.08)',
+        borderRadius: 999, padding: '6px 14px',
+        pointerEvents: 'all',
+        fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+      }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'rgba(0,0,0,0.5)' }}>
+          <svg width={13} height={13} viewBox="0 0 13 13" aria-hidden>
+            <rect x="1.5" y="1.5" width="10" height="10" rx="2"
+                  fill="rgba(0,102,204,0.14)" stroke="rgba(0,102,204,0.45)" strokeWidth="1" />
+          </svg>
+          serves load
+        </span>
+
+        <span style={{ width: 1, height: 14, background: 'rgba(0,0,0,0.1)' }} />
+
+        <button
+          onClick={() => onLayerToggle('generators')}
+          title="Generator-only balancing authorities: no demand of their own, embedded in a host BA"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 7,
+            background: 'transparent', border: 'none', padding: 0,
+            cursor: 'pointer',
+            fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.08em',
+            color: layers.has('generators') ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.22)',
+            transition: 'color 0.18s ease',
+          }}
+        >
+          <svg width={13} height={13} viewBox="0 0 13 13" aria-hidden>
+            <circle cx="6.5" cy="6.5" r="4.6" fill="none"
+                    stroke={layers.has('generators') ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.18)'}
+                    strokeWidth="1.3" />
+            <circle cx="6.5" cy="6.5" r="2.1"
+                    fill={layers.has('generators') ? 'rgba(0,0,0,0.45)' : 'transparent'} />
+          </svg>
+          generator only
+        </button>
+      </div>
 
       {/* Generation facility toggles — always visible */}
       <div style={{ display: 'flex', gap: 6, pointerEvents: 'all' }}>
